@@ -5,6 +5,7 @@
 Build an MVP web application that provides an AI-powered, interactive trip planning experience. The app guides users through day-by-day itinerary creation with a conversational agent interface, then presents the final itinerary in a clean, drag-drop editable format. This MVP focuses on the frontend experience with simulated AI responses.
 
 **Core Problem Being Solved:**
+
 - Replace messy Google Docs/Sheets trip planning
 - AI that understands user preferences through conversation
 - Automatic conflict detection when editing one day affects others
@@ -13,6 +14,7 @@ Build an MVP web application that provides an AI-powered, interactive trip plann
 ## Tech Stack
 
 **Frontend:**
+
 - Next.js 14 (App Router)
 - TypeScript
 - Tailwind CSS
@@ -22,6 +24,7 @@ Build an MVP web application that provides an AI-powered, interactive trip plann
 - React Query (for API calls, even though mocked)
 
 **Backend (Future - Simulated for Now):**
+
 - Python FastAPI
 - LangGraph for agent orchestration
 - Mock responses in frontend for MVP
@@ -29,11 +32,13 @@ Build an MVP web application that provides an AI-powered, interactive trip plann
 ## MVP Core Features
 
 ### 1. Initial Input Form
+
 - Simple, clean form for basic trip details
 - Fields: destination, dates, rough budget, trip focus
 - Conversational tone, not intimidating
 
 ### 2. Interactive Planning Chat Interface
+
 - Split-screen: chat on left, itinerary preview on right
 - Agent asks clarifying questions
 - Agent presents 3 options per day
@@ -41,6 +46,7 @@ Build an MVP web application that provides an AI-powered, interactive trip plann
 - Real-time itinerary updates as days are locked
 
 ### 3. Final Itinerary View
+
 - Timeline view of entire trip
 - Each day is a card with events listed
 - Drag-drop events between days
@@ -49,6 +55,7 @@ Build an MVP web application that provides an AI-powered, interactive trip plann
 - Select multiple events to bulk edit via chat
 
 ### 4. Itinerary Edit Chat
+
 - Chat sidebar that opens when editing
 - User can select events and ask agent to modify
 - "Make Day 3 lighter", "Move this to Day 5", etc.
@@ -126,6 +133,7 @@ App
 ## Data Structures
 
 ### TripData
+
 ```typescript
 interface TripData {
   id: string;
@@ -142,17 +150,19 @@ interface TripData {
 ```
 
 ### UserProfile
+
 ```typescript
 interface UserProfile {
   departure_city?: string;
-  hiking_level?: "beginner" | "intermediate" | "advanced";
-  pace_preference?: "relaxed" | "moderate" | "packed";
+  hiking_level?: 'beginner' | 'intermediate' | 'advanced';
+  pace_preference?: 'relaxed' | 'moderate' | 'packed';
   dietary_restrictions?: string[];
   interests?: string[];
 }
 ```
 
 ### Itinerary
+
 ```typescript
 interface Itinerary {
   trip_id: string;
@@ -173,7 +183,7 @@ interface Day {
     total_cost: number;
     active_hours: number;
     rest_hours: number;
-    energy_level: "light" | "moderate" | "strenuous";
+    energy_level: 'light' | 'moderate' | 'strenuous';
   };
   locked: boolean;
 }
@@ -184,7 +194,7 @@ interface Event {
   time_start: string; // "14:00"
   time_end: string;
   duration_minutes: number;
-  type: "logistics" | "activity" | "dining" | "transit" | "rest";
+  type: 'logistics' | 'activity' | 'dining' | 'transit' | 'rest';
   category: string;
   title: string;
   description: string;
@@ -217,13 +227,14 @@ interface Alternative {
 ```
 
 ### ChatMessage
+
 ```typescript
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  type?: "question" | "options" | "confirmation" | "info";
+  type?: 'question' | 'options' | 'confirmation' | 'info';
   options?: Option[]; // For option cards
   metadata?: {
     day_number?: number;
@@ -245,7 +256,9 @@ interface Option {
 ## API Contract (Mocked)
 
 ### POST /api/mock/chat
+
 Request:
+
 ```json
 {
   "message": "From Singapore, advanced hiker, 80% hiking 20% culture",
@@ -258,6 +271,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "message": "Great! Now I can start planning...",
@@ -269,7 +283,9 @@ Response:
 ```
 
 ### POST /api/mock/generate-day
+
 Request:
+
 ```json
 {
   "trip_id": "trip_123",
@@ -280,6 +296,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "day_number": 1,
@@ -304,7 +321,9 @@ Response:
 ```
 
 ### POST /api/mock/validate-edit
+
 Request:
+
 ```json
 {
   "itinerary": {...},
@@ -318,6 +337,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "valid": false,
@@ -431,6 +451,7 @@ trip-planner-mvp/
 ## UI/UX Specifications
 
 ### Design Principles
+
 1. **Clean and minimal** - Don't overwhelm with options
 2. **Conversational** - Feel like chatting with a smart friend
 3. **Progressive disclosure** - Show info as needed, not all at once
@@ -438,31 +459,35 @@ trip-planner-mvp/
 5. **Mobile-responsive** - Should work on tablet/mobile too
 
 ### Color Scheme (Tailwind)
+
 ```javascript
 // Use a calm, travel-inspired palette
-primary: blue-600        // Trust, sky, water
-secondary: emerald-500   // Nature, growth
-accent: amber-500        // Warmth, sun
-neutral: slate           // Modern, clean
-error: red-500
-success: green-500
+primary: blue - 600; // Trust, sky, water
+secondary: emerald - 500; // Nature, growth
+accent: amber - 500; // Warmth, sun
+neutral: slate; // Modern, clean
+error: red - 500;
+success: green - 500;
 ```
 
 ### Key UI Patterns
 
 **Landing Page:**
+
 - Hero with large headline: "Plan Your Trip in Minutes, Not Hours"
 - 3-column problem statement (messy docs, no personalization, hard to edit)
 - Large CTA button: "Start Planning"
 - Clean, professional, not cluttered
 
 **Planning Interface:**
+
 - Progress bar at top showing: "Input → Clarification → Day Planning → Review"
 - Chat on left (40% width), preview on right (60% width) for Steps 2-3
 - Option cards should be clickable with hover effects
 - Clear "Lock Day" confirmation before moving to next day
 
 **Itinerary View:**
+
 - Sidebar with trip metadata (destination, dates, budget used/remaining)
 - Main area: scrollable timeline of days
 - Each day card has header with: date, theme, cost, energy level
@@ -472,6 +497,7 @@ success: green-500
 - Mini-map on right showing all days (optional for MVP)
 
 **Drag-Drop Behavior:**
+
 - Smooth animations when dragging
 - Drop zones highlight when hovering
 - Snap to position when dropped
@@ -479,6 +505,7 @@ success: green-500
 - Undo button appears after any drag action
 
 **Edit Chat Sidebar:**
+
 - Slides in from right (30% width)
 - Selected events highlighted in blue in timeline
 - Chat messages reference selected events
@@ -497,14 +524,16 @@ success: green-500
    - Form appears with fields:
      - Where? (destination input with autocomplete)
      - When? (date range picker)
-     - Budget? (number input with currency selector)
-     - What's your focus? (select: Adventure, Cultural, Relaxation, Mixed)
+     - Budget? (category selector)
+     - What's your focus? (multi-select: Hiking, Adventure, Cultural, Relaxation)
+     - How many travelers? (number input)
+   - Add additional text box for extra details (will be used as further requirements to the agent)
    - User fills out, clicks "Next"
 
 3. **Clarification Chat (Step 2)**
    - Progress bar shows "Step 2 of 4"
    - Agent message: "Great! I have a few questions to personalize your trip..."
-   - Agent asks 3-4 questions one by one:
+   - Agent asks 3-4 questions one by one (use placeholders in the code for the agent responses as these will be dynamic in the future.):
      - "Where will you fly from?"
      - "What's your hiking experience level?"
      - "Do you prefer packed days or relaxed pace?"
@@ -575,12 +604,14 @@ success: green-500
 Create canned responses for common scenarios:
 
 **Clarification Phase:**
+
 - Response to fitness level question
 - Response to pace preference
 - Response to budget concerns
 - Confirmation message before research
 
 **Day Planning Phase:**
+
 - 3 option sets for arrival day (light, rest, prep)
 - 3 option sets for full hiking day
 - 3 option sets for cultural mix day
@@ -589,6 +620,7 @@ Create canned responses for common scenarios:
 - Day confirmation messages
 
 **Editing Phase:**
+
 - Conflict detection messages
 - Suggested resolutions
 - Confirmation messages
@@ -597,6 +629,7 @@ Create canned responses for common scenarios:
 ### Sample Itinerary
 
 Create 1-2 complete sample itineraries with:
+
 - 5 days of events
 - Mix of activity types
 - Realistic timing and costs
@@ -608,11 +641,12 @@ Create 1-2 complete sample itineraries with:
 ### Global State (Zustand)
 
 **Trip Store:**
+
 ```typescript
 interface TripStore {
   tripData: TripData | null;
   userProfile: UserProfile;
-  currentPhase: "input" | "clarification" | "planning" | "review" | "editing";
+  currentPhase: 'input' | 'clarification' | 'planning' | 'review' | 'editing';
   setTripData: (data: TripData) => void;
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   setPhase: (phase: string) => void;
@@ -620,6 +654,7 @@ interface TripStore {
 ```
 
 **Chat Store:**
+
 ```typescript
 interface ChatStore {
   messages: ChatMessage[];
@@ -633,6 +668,7 @@ interface ChatStore {
 ```
 
 **Itinerary Store:**
+
 ```typescript
 interface ItineraryStore {
   itinerary: Itinerary | null;
@@ -650,28 +686,30 @@ interface ItineraryStore {
 ## Key Implementation Details
 
 ### Mock Chat Logic
+
 Create a simple state machine in the mock API:
 
 ```typescript
 // In /api/mock/chat/route.ts
 const chatStateMachine = {
-  "initial": {
-    response: "Great! I have a few questions...",
-    next: "ask_departure"
+  initial: {
+    response: 'Great! I have a few questions...',
+    next: 'ask_departure',
   },
-  "ask_departure": {
-    response: "Where will you fly from?",
-    next: "ask_experience"
+  ask_departure: {
+    response: 'Where will you fly from?',
+    next: 'ask_experience',
   },
-  "ask_experience": {
+  ask_experience: {
     response: "What's your hiking experience?",
-    next: "ask_pace"
+    next: 'ask_pace',
   },
   // ... etc
 };
 ```
 
 ### Drag-Drop Implementation
+
 Use `@dnd-kit/core` for better touch support:
 
 ```typescript
@@ -717,6 +755,7 @@ function handleDragEnd(event) {
 ## Development Phases
 
 ### Phase 1: Foundation (Do First)
+
 1. Set up Next.js project with TypeScript
 2. Install and configure Tailwind + shadcn/ui
 3. Create basic routing structure
@@ -725,6 +764,7 @@ function handleDragEnd(event) {
 6. Build landing page
 
 ### Phase 2: Planning Interface
+
 1. Build InitialInputForm component
 2. Create ChatWindow component
 3. Implement mock chat API
@@ -734,6 +774,7 @@ function handleDragEnd(event) {
 7. Add step progress indicator
 
 ### Phase 3: Itinerary View
+
 1. Build DayCard component
 2. Build EventCard component
 3. Create TimelineView layout
@@ -742,6 +783,7 @@ function handleDragEnd(event) {
 6. Create EditChatSidebar
 
 ### Phase 4: Polish
+
 1. Add loading states and animations
 2. Implement error handling
 3. Add undo/redo for drag actions
@@ -752,6 +794,7 @@ function handleDragEnd(event) {
 ## Success Criteria
 
 MVP is complete when:
+
 1. ✅ User can input trip details
 2. ✅ User can complete clarification chat
 3. ✅ User can plan all 5 days with options
