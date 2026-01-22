@@ -71,23 +71,28 @@ function handleClarificationPhase(body: ChatRequestBody): ChatResponse {
     };
   }
 
-  // If we're in the middle of questions
-  if (currentStep < CLARIFICATION_QUESTIONS.length) {
-    const currentQuestion = CLARIFICATION_QUESTIONS[currentStep - 1];
-    const nextQuestion = CLARIFICATION_QUESTIONS[currentStep];
+  // Get the question that was just answered (currentStep - 1 because step increments before API call)
+  const answeredQuestionIndex = currentStep - 1;
+  const answeredQuestion = CLARIFICATION_QUESTIONS[answeredQuestionIndex];
 
-    if (nextQuestion) {
-      return {
-        message: `${currentQuestion.followUp}\n\n${nextQuestion.question}`,
-        type: 'question',
-        next_phase: 'clarification',
-      };
-    }
+  // Check if there's a next question to ask
+  const nextQuestionIndex = currentStep;
+  const nextQuestion = CLARIFICATION_QUESTIONS[nextQuestionIndex];
+
+  if (nextQuestion) {
+    // We have more questions - return followUp + next question
+    return {
+      message: `${answeredQuestion?.followUp || ''}\n\n${nextQuestion.question}`,
+      type: 'question',
+      next_phase: 'clarification',
+    };
   }
 
-  // If we've answered all questions, move to planning
+  // All questions answered - return final followUp + completion message
+  // Include the last question's followUp before the completion message
+  const finalFollowUp = answeredQuestion?.followUp || '';
   return {
-    message: CLARIFICATION_COMPLETE_MESSAGE,
+    message: `${finalFollowUp}\n\n${CLARIFICATION_COMPLETE_MESSAGE}`,
     type: 'info',
     next_phase: 'planning',
   };
