@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, differenceInDays, addDays } from 'date-fns';
 import { ProgressBar, InitialInputForm, ChatWindow, ItineraryPreview } from '@/components/planning';
-import { useTripStore, useChatStore, useItineraryStore } from '@/store';
+import { useTripStore, useChatStore, useItineraryStore, useDebugLog } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TripData, Day, Option, ChatMessage } from '@/types';
@@ -18,17 +18,19 @@ const STEP_PLANNING = 3;
 const STEP_REVIEW = 4;
 
 interface FormData {
-  destination: string;
+  destinations: string[];
   startDate: Date | undefined;
   endDate: Date | undefined;
   budgetCategory: string;
   focus: string[];
   travelers: number;
+  canDrive: boolean;
   additionalNotes: string;
 }
 
 export default function PlanPage() {
   const router = useRouter();
+  const debugLog = useDebugLog();
   const [currentStep, setCurrentStep] = useState(STEP_INPUT);
   const [isResearching, setIsResearching] = useState(false);
   const [clarificationStep, setClarificationStep] = useState(0);
@@ -55,26 +57,34 @@ export default function PlanPage() {
       step?: number,
       day?: number
     ) => {
+      const requestBody = {
+        message,
+        conversation_id: `conv_${Date.now()}`,
+        context: {
+          current_phase: phase,
+          clarification_step: step,
+          current_day: day,
+          total_days: totalDays,
+          trip_data: tripData
+            ? { destination: tripData.destination, startDate: tripData.startDate }
+            : undefined,
+        },
+      };
+
+      debugLog('api_request', `Chat API: ${phase}`, { message, step, day });
+
       const response = await fetch(API_ENDPOINTS.chat, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          conversation_id: `conv_${Date.now()}`,
-          context: {
-            current_phase: phase,
-            clarification_step: step,
-            current_day: day,
-            total_days: totalDays,
-            trip_data: tripData
-              ? { destination: tripData.destination, startDate: tripData.startDate }
-              : undefined,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
-      return response.json();
+      const data = await response.json();
+
+      debugLog('api_response', `Chat API response: ${phase}`, { type: data.type, hasOptions: !!data.options });
+
+      return data;
     },
-    [totalDays, tripData]
+    [totalDays, tripData, debugLog]
   );
 
   // Handle initial form submission
@@ -84,18 +94,32 @@ export default function PlanPage() {
     const days = differenceInDays(formData.endDate, formData.startDate) + 1;
     setTotalDays(days);
 
+    // Filter out empty destinations
+    const validDestinations = formData.destinations.filter((d) => d.trim());
+
     const newTripData: TripData = {
       id: `trip_${Date.now()}`,
-      destination: formData.destination,
+      destination: validDestinations[0] || '', // Primary destination for backwards compatibility
+      destinations: validDestinations,
       startDate: formData.startDate.toISOString(),
       endDate: formData.endDate.toISOString(),
       budgetCategory: formData.budgetCategory as TripData['budgetCategory'],
       focus: formData.focus as TripData['focus'],
       travelers: formData.travelers,
+      canDrive: formData.canDrive,
       additionalNotes: formData.additionalNotes,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    debugLog('user_action', 'Submitted trip form', {
+      destinations: validDestinations,
+      days,
+      budget: formData.budgetCategory,
+      travelers: formData.travelers,
+      canDrive: formData.canDrive,
+    });
+    debugLog('state_change', 'Trip data created', { tripId: newTripData.id });
 
     setTripData(newTripData);
     setPhase('clarification');
@@ -260,6 +284,8 @@ export default function PlanPage() {
 
   // Handle option selection in planning phase
   const handleOptionSelect = async (option: Option) => {
+    debugLog('user_action', `Selected day ${currentDay} option`, { title: option.title, cost: option.cost });
+
     // Add user selection message
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}_select`,

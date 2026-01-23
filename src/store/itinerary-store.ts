@@ -13,6 +13,8 @@ interface ItineraryState {
   hasUnsavedChanges: boolean;
   warnings: DayWarning[];
   eventConflicts: EventConflictMap;
+  // Visual selections for alternative cycling (groupId -> visually selected eventId)
+  visualSelections: Record<string, string>;
 }
 
 interface ItineraryActions {
@@ -44,6 +46,10 @@ interface ItineraryActions {
   addAlternative: (dayNumber: number, primaryEventId: string, alternativeEvent: Event) => void;
   promoteAlternative: (dayNumber: number, eventId: string) => void;
   removeAlternative: (dayNumber: number, eventId: string) => void;
+  // Visual selections for cycling
+  setVisualSelection: (groupId: string, eventId: string) => void;
+  clearVisualSelections: () => void;
+  applyVisualSelections: () => void;
   reset: () => void;
 }
 
@@ -56,6 +62,7 @@ const initialState: ItineraryState = {
   hasUnsavedChanges: false,
   warnings: [],
   eventConflicts: {},
+  visualSelections: {},
 };
 
 export const useItineraryStore = create<ItineraryState & ItineraryActions>((set, get) => ({
@@ -442,6 +449,51 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
       return {
         itinerary: { ...state.itinerary, days: updatedDays },
         selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
+        hasUnsavedChanges: true,
+      };
+    }),
+
+  // Visual selections for cycling (doesn't change store data until applyVisualSelections)
+  setVisualSelection: (groupId, eventId) =>
+    set((state) => ({
+      visualSelections: { ...state.visualSelections, [groupId]: eventId },
+    })),
+
+  clearVisualSelections: () => set({ visualSelections: {} }),
+
+  applyVisualSelections: () =>
+    set((state) => {
+      if (!state.itinerary || Object.keys(state.visualSelections).length === 0) {
+        return { visualSelections: {} };
+      }
+
+      // For each visual selection, promote that alternative
+      const updatedDays = state.itinerary.days.map((day) => {
+        let updatedEvents = [...day.events];
+
+        Object.entries(state.visualSelections).forEach(([groupId, selectedEventId]) => {
+          // Check if this day has events with this groupId
+          const groupEvents = updatedEvents.filter((e) => e.alternativeGroupId === groupId);
+          if (groupEvents.length === 0) return;
+
+          // Update isPrimaryAlternative flags
+          updatedEvents = updatedEvents.map((e) => {
+            if (e.alternativeGroupId === groupId) {
+              return {
+                ...e,
+                isPrimaryAlternative: e.id === selectedEventId,
+              };
+            }
+            return e;
+          });
+        });
+
+        return { ...day, events: updatedEvents };
+      });
+
+      return {
+        itinerary: { ...state.itinerary, days: updatedDays },
+        visualSelections: {},
         hasUnsavedChanges: true,
       };
     }),

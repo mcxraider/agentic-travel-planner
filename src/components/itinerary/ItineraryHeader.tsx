@@ -1,13 +1,13 @@
 'use client';
 
-import { TripData, Itinerary } from '@/types';
+import Link from 'next/link';
+import { TripData } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import {
   MapPin,
   Calendar,
-  DollarSign,
   Users,
   Check,
   Undo2,
@@ -15,11 +15,11 @@ import {
   PanelRightClose,
   Loader2,
   Sparkles,
+  Compass,
 } from 'lucide-react';
 
 interface ItineraryHeaderProps {
   tripData: TripData;
-  itinerary: Itinerary;
   hasUnsavedChanges: boolean;
   canUndo: boolean;
   isSidebarOpen: boolean;
@@ -32,7 +32,6 @@ interface ItineraryHeaderProps {
 
 export function ItineraryHeader({
   tripData,
-  itinerary,
   hasUnsavedChanges,
   canUndo,
   isSidebarOpen,
@@ -45,23 +44,22 @@ export function ItineraryHeader({
   const startDate = tripData.startDate ? format(parseISO(tripData.startDate), 'MMM d') : '';
   const endDate = tripData.endDate ? format(parseISO(tripData.endDate), 'MMM d, yyyy') : '';
 
-  // Calculate total spent
-  const totalSpent = itinerary.days.reduce((sum, day) => sum + day.summary.total_cost, 0);
-
-  // Budget display based on category
-  const budgetLabels: Record<string, string> = {
-    budget: 'Budget',
-    moderate: 'Moderate',
-    luxury: 'Luxury',
-  };
-
   return (
     <header className="sticky top-0 z-10 bg-white border-b shadow-sm">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Left: Trip Info */}
+          {/* Left: Logo + Trip Info */}
           <div className="flex items-center gap-6">
-            <div>
+            {/* Wandr Logo */}
+            <Link
+              href="/"
+              className="flex items-center gap-2 px-3 py-2 -ml-3 rounded-lg hover:bg-gray-100 transition-colors group"
+            >
+              <Compass className="h-5 w-5 text-blue-600 group-hover:rotate-45 transition-transform" />
+              <span className="font-bold text-lg text-gray-900">Wandr</span>
+            </Link>
+
+            <div className="border-l pl-6">
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <MapPin className="h-6 w-6 text-blue-600" />
                 {tripData.destination}
@@ -78,20 +76,7 @@ export function ItineraryHeader({
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="flex items-center gap-3 pl-6 border-l">
-              <Badge variant="outline" className="text-base py-1 px-3">
-                {itinerary.metadata.total_days} days
-              </Badge>
-              <Badge variant="outline" className="text-base py-1 px-3 flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
-                {totalSpent} spent
-              </Badge>
-              <Badge variant="secondary" className="text-base py-1 px-3">
-                {budgetLabels[tripData.budgetCategory] || tripData.budgetCategory}
-              </Badge>
             </div>
-          </div>
 
           {/* Right: Actions */}
           <div className="flex items-center gap-3">

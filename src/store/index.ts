@@ -2,3 +2,5 @@ export { useTripStore } from './trip-store';
 export { useChatStore } from './chat-store';
 export { useItineraryStore } from './itinerary-store';
 export type { EventConflictMap } from './itinerary-store';
+export { useDebugStore, useDebugLog } from './debug-store';
+export type { LogCategory, LogEntry } from './debug-store';

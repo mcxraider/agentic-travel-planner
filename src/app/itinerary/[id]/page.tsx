@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useItineraryStore, useTripStore, EventConflictMap } from '@/store';
+import { useItineraryStore, useTripStore, EventConflictMap, useDebugLog } from '@/store';
 import {
   ItineraryHeader,
   TimelineView,
@@ -29,6 +29,7 @@ import {
 export default function ItineraryPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const debugLog = useDebugLog();
 
   const { tripData } = useTripStore();
   const {
@@ -39,6 +40,7 @@ export default function ItineraryPage() {
     undoStack,
     warnings,
     eventConflicts,
+    visualSelections,
     setEditSidebarOpen,
     toggleEventSelection,
     clearSelection,
@@ -49,11 +51,12 @@ export default function ItineraryPage() {
     addEvent,
     applyChanges,
     addAlternative,
-    promoteAlternative,
     dismissWarning,
     setEventConflicts,
     dismissEventConflict,
     clearEventConflicts,
+    setVisualSelection,
+    applyVisualSelections,
   } = useItineraryStore();
 
   const [addEventDayNumber, setAddEventDayNumber] = useState<number | null>(null);
@@ -114,6 +117,7 @@ export default function ItineraryPage() {
   // Handle event deletion
   const handleDeleteEvent = useCallback(
     (dayNumber: number, eventId: string) => {
+      debugLog('user_action', 'Deleted event', { dayNumber, eventId });
       pushUndo();
       deleteEvent(dayNumber, eventId);
       toast({
@@ -121,16 +125,17 @@ export default function ItineraryPage() {
         description: 'The event has been removed from your itinerary.',
       });
     },
-    [pushUndo, deleteEvent, toast]
+    [pushUndo, deleteEvent, toast, debugLog]
   );
 
   // Handle moving event (drag-drop)
   const handleMoveEvent = useCallback(
     (eventId: string, fromDay: number, toDay: number, newIndex?: number) => {
+      debugLog('user_action', 'Moved event', { eventId, fromDay, toDay, newIndex });
       pushUndo();
       moveEvent(eventId, fromDay, toDay, newIndex);
     },
-    [pushUndo, moveEvent]
+    [pushUndo, moveEvent, debugLog]
   );
 
   // Handle drag start - push undo before any drag operation
@@ -141,6 +146,7 @@ export default function ItineraryPage() {
   // Handle adding event
   const handleAddEvent = useCallback(
     (dayNumber: number, event: Event) => {
+      debugLog('user_action', 'Added event', { dayNumber, title: event.title });
       pushUndo();
       addEvent(dayNumber, event);
       toast({
@@ -148,7 +154,7 @@ export default function ItineraryPage() {
         description: `Added "${event.title}" to Day ${dayNumber}.`,
       });
     },
-    [pushUndo, addEvent, toast]
+    [pushUndo, addEvent, toast, debugLog]
   );
 
   // Handle deleting selected events
@@ -179,7 +185,16 @@ export default function ItineraryPage() {
   const handleApplyChanges = useCallback(async () => {
     if (!itinerary) return;
 
+    debugLog('user_action', 'Apply changes clicked');
+
+    // First, apply any visual selections (cycling) to the actual data
+    if (Object.keys(visualSelections).length > 0) {
+      debugLog('state_change', 'Applying visual selections', { count: Object.keys(visualSelections).length });
+      applyVisualSelections();
+    }
+
     setIsValidating(true);
+    debugLog('api_request', 'Validating itinerary changes');
 
     try {
       const response = await fetch('/api/mock/validate-edit', {
@@ -234,7 +249,7 @@ export default function ItineraryPage() {
     } finally {
       setIsValidating(false);
     }
-  }, [itinerary, applyChanges, toast, setEventConflicts, clearEventConflicts]);
+  }, [itinerary, applyChanges, toast, setEventConflicts, clearEventConflicts, visualSelections, applyVisualSelections, debugLog]);
 
   // Handle confirming save with conflicts
   const handleConfirmSaveWithConflicts = useCallback(() => {
@@ -323,6 +338,7 @@ export default function ItineraryPage() {
 
   const handleAddAlternative = useCallback(
     (dayNumber: number, primaryEventId: string, alternativeEvent: Event) => {
+      debugLog('user_action', 'Added alternative event', { dayNumber, primaryEventId, title: alternativeEvent.title });
       pushUndo();
       addAlternative(dayNumber, primaryEventId, alternativeEvent);
       toast({
@@ -330,20 +346,15 @@ export default function ItineraryPage() {
         description: `Added "${alternativeEvent.title}" as an alternative.`,
       });
     },
-    [pushUndo, addAlternative, toast]
+    [pushUndo, addAlternative, toast, debugLog]
   );
 
-  // Handle promoting alternative
-  const handlePromoteAlternative = useCallback(
-    (dayNumber: number, alternativeId: string) => {
-      pushUndo();
-      promoteAlternative(dayNumber, alternativeId);
-      toast({
-        title: 'Alternative swapped',
-        description: 'The alternative is now the primary option.',
-      });
+  // Handle visual selection change (cycling through alternatives)
+  const handleVisualSelectionChange = useCallback(
+    (groupId: string, eventId: string) => {
+      setVisualSelection(groupId, eventId);
     },
-    [pushUndo, promoteAlternative, toast]
+    [setVisualSelection]
   );
 
   // Handle dismiss warning
@@ -394,7 +405,6 @@ export default function ItineraryPage() {
       {/* Header */}
       <ItineraryHeader
         tripData={tripData}
-        itinerary={itinerary}
         hasUnsavedChanges={hasUnsavedChanges}
         canUndo={undoStack.length > 0}
         isSidebarOpen={editSidebarOpen}
@@ -418,12 +428,13 @@ export default function ItineraryPage() {
             selectedEventIds={selectedEventIds}
             warnings={warnings}
             eventConflicts={eventConflicts}
+            visualSelections={visualSelections}
             onSelectEvent={handleSelectEvent}
             onDeleteEvent={handleDeleteEvent}
             onMoveEvent={handleMoveEvent}
             onAddEvent={(dayNumber) => setAddEventDayNumber(dayNumber)}
             onAddAlternative={handleOpenAddAlternative}
-            onPromoteAlternative={handlePromoteAlternative}
+            onVisualSelectionChange={handleVisualSelectionChange}
             onDismissWarning={handleDismissWarning}
             onDismissConflict={handleDismissConflict}
             onDragStart={handleDragStart}

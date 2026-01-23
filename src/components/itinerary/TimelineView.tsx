@@ -10,12 +10,13 @@ interface TimelineViewProps {
   selectedEventIds: string[];
   warnings?: DayWarning[];
   eventConflicts?: EventConflictMap;
+  visualSelections?: Record<string, string>;
   onSelectEvent: (eventId: string, multiSelect: boolean) => void;
   onDeleteEvent: (dayNumber: number, eventId: string) => void;
   onMoveEvent: (eventId: string, fromDay: number, toDay: number, newIndex?: number) => void;
   onAddEvent: (dayNumber: number) => void;
   onAddAlternative?: (dayNumber: number, event: Event) => void;
-  onPromoteAlternative?: (dayNumber: number, alternativeId: string) => void;
+  onVisualSelectionChange?: (groupId: string, eventId: string) => void;
   onDismissWarning?: (warningId: string) => void;
   onDismissConflict?: (eventId: string) => void;
   onDragStart?: () => void;
@@ -26,12 +27,13 @@ export function TimelineView({
   selectedEventIds,
   warnings = [],
   eventConflicts = {},
+  visualSelections = {},
   onSelectEvent,
   onDeleteEvent,
   onMoveEvent,
   onAddEvent,
   onAddAlternative,
-  onPromoteAlternative,
+  onVisualSelectionChange,
   onDismissWarning,
   onDismissConflict,
   onDragStart,
@@ -46,11 +48,12 @@ export function TimelineView({
             key={day.day_number}
             day={day}
             selectedEventIds={selectedEventIds}
+            visualSelections={visualSelections}
             onSelectEvent={onSelectEvent}
             onDeleteEvent={onDeleteEvent}
             onAddEvent={onAddEvent}
             onAddAlternative={onAddAlternative}
-            onPromoteAlternative={onPromoteAlternative}
+            onVisualSelectionChange={onVisualSelectionChange}
             warnings={warnings.filter((w) => w.dayNumber === day.day_number)}
             onDismissWarning={onDismissWarning}
             eventConflicts={eventConflicts}

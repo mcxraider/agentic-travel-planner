@@ -28,11 +28,12 @@ import {
 interface DayCardProps {
   day: Day;
   selectedEventIds: string[];
+  visualSelections?: Record<string, string>;
   onSelectEvent: (eventId: string, multiSelect: boolean) => void;
   onDeleteEvent: (dayNumber: number, eventId: string) => void;
   onAddEvent: (dayNumber: number) => void;
   onAddAlternative?: (dayNumber: number, event: Event) => void;
-  onPromoteAlternative?: (dayNumber: number, alternativeId: string) => void;
+  onVisualSelectionChange?: (groupId: string, eventId: string) => void;
   warnings?: DayWarning[];
   onDismissWarning?: (warningId: string) => void;
   eventConflicts?: EventConflictMap;
@@ -55,11 +56,12 @@ const energyLevelLabels: Record<Day['summary']['energy_level'], string> = {
 export function DayCard({
   day,
   selectedEventIds,
+  visualSelections = {},
   onSelectEvent,
   onDeleteEvent,
   onAddEvent,
   onAddAlternative,
-  onPromoteAlternative,
+  onVisualSelectionChange,
   warnings = [],
   onDismissWarning,
   eventConflicts = {},
@@ -106,8 +108,8 @@ export function DayCard({
       }
     });
 
-    // Sort by order
-    primaryEvts.sort((a, b) => a.order - b.order);
+    // Sort by time_start (with order as tiebreaker for same start time)
+    primaryEvts.sort((a, b) => a.time_start.localeCompare(b.time_start) || a.order - b.order);
 
     return { primaryEvents: primaryEvts, alternativesMap: altMap };
   }, [day.events]);
@@ -220,21 +222,28 @@ export function DayCard({
                   {isHighlighted ? 'Drop event here' : 'No events scheduled'}
                 </div>
               ) : (
-                primaryEvents.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    dayNumber={day.day_number}
-                    isSelected={selectedEventIds.includes(event.id)}
-                    onSelect={onSelectEvent}
-                    onDelete={onDeleteEvent}
-                    alternatives={alternativesMap.get(event.id)}
-                    onAddAlternative={onAddAlternative}
-                    onPromoteAlternative={onPromoteAlternative}
-                    conflictMessage={eventConflicts[event.id]}
-                    onDismissConflict={onDismissConflict}
-                  />
-                ))
+                primaryEvents.map((event) => {
+                  const alternatives = alternativesMap.get(event.id) || [];
+                  const groupId = event.alternativeGroupId;
+                  const visuallySelectedId = groupId ? visualSelections[groupId] : undefined;
+
+                  return (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      dayNumber={day.day_number}
+                      isSelected={selectedEventIds.includes(event.id)}
+                      onSelect={onSelectEvent}
+                      onDelete={onDeleteEvent}
+                      alternatives={alternatives}
+                      onAddAlternative={alternatives.length < 2 ? onAddAlternative : undefined}
+                      visuallySelectedId={visuallySelectedId}
+                      onVisualSelectionChange={onVisualSelectionChange}
+                      conflictMessage={eventConflicts[event.id]}
+                      onDismissConflict={onDismissConflict}
+                    />
+                  );
+                })
               )}
             </div>
           </SortableContext>
