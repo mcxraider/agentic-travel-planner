@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, differenceInDays, addDays } from 'date-fns';
 import { ProgressBar, InitialInputForm, ChatWindow, ItineraryPreview } from '@/components/planning';
-import { useTripStore, useChatStore, useItineraryStore } from '@/store';
+import { useTripStore, useChatStore, useItineraryStore, useDebugLog } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TripData, Day, Option, ChatMessage } from '@/types';
@@ -18,17 +18,19 @@ const STEP_PLANNING = 3;
 const STEP_REVIEW = 4;
 
 interface FormData {
-  destination: string;
+  destinations: string[];
   startDate: Date | undefined;
   endDate: Date | undefined;
   budgetCategory: string;
   focus: string[];
   travelers: number;
+  canDrive: boolean;
   additionalNotes: string;
 }
 
 export default function PlanPage() {
   const router = useRouter();
+  const debugLog = useDebugLog();
   const [currentStep, setCurrentStep] = useState(STEP_INPUT);
   const [isResearching, setIsResearching] = useState(false);
   const [clarificationStep, setClarificationStep] = useState(0);
@@ -41,9 +43,11 @@ export default function PlanPage() {
   const { setItinerary } = useItineraryStore();
   const { messages, isTyping, addMessage, setTyping, clearChat } = useChatStore();
 
-  // Refs to track initialization
+  // Refs to track initialization and prevent duplicate requests
   const conversationStartedRef = useRef(false);
   const dayOptionsRequestedRef = useRef<number>(0);
+  const clarificationRequestInFlight = useRef(false);
+  const dayRequestInFlight = useRef(false);
 
   // Helper to send chat API request
   const sendChatRequest = useCallback(
@@ -53,26 +57,34 @@ export default function PlanPage() {
       step?: number,
       day?: number
     ) => {
+      const requestBody = {
+        message,
+        conversation_id: `conv_${Date.now()}`,
+        context: {
+          current_phase: phase,
+          clarification_step: step,
+          current_day: day,
+          total_days: totalDays,
+          trip_data: tripData
+            ? { destination: tripData.destination, startDate: tripData.startDate }
+            : undefined,
+        },
+      };
+
+      debugLog('api_request', `Chat API: ${phase}`, { message, step, day });
+
       const response = await fetch(API_ENDPOINTS.chat, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          conversation_id: `conv_${Date.now()}`,
-          context: {
-            current_phase: phase,
-            clarification_step: step,
-            current_day: day,
-            total_days: totalDays,
-            trip_data: tripData
-              ? { destination: tripData.destination, startDate: tripData.startDate }
-              : undefined,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
-      return response.json();
+      const data = await response.json();
+
+      debugLog('api_response', `Chat API response: ${phase}`, { type: data.type, hasOptions: !!data.options });
+
+      return data;
     },
-    [totalDays, tripData]
+    [totalDays, tripData, debugLog]
   );
 
   // Handle initial form submission
@@ -82,18 +94,32 @@ export default function PlanPage() {
     const days = differenceInDays(formData.endDate, formData.startDate) + 1;
     setTotalDays(days);
 
+    // Filter out empty destinations
+    const validDestinations = formData.destinations.filter((d) => d.trim());
+
     const newTripData: TripData = {
       id: `trip_${Date.now()}`,
-      destination: formData.destination,
+      destination: validDestinations[0] || '', // Primary destination for backwards compatibility
+      destinations: validDestinations,
       startDate: formData.startDate.toISOString(),
       endDate: formData.endDate.toISOString(),
       budgetCategory: formData.budgetCategory as TripData['budgetCategory'],
       focus: formData.focus as TripData['focus'],
       travelers: formData.travelers,
+      canDrive: formData.canDrive,
       additionalNotes: formData.additionalNotes,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    debugLog('user_action', 'Submitted trip form', {
+      destinations: validDestinations,
+      days,
+      budget: formData.budgetCategory,
+      travelers: formData.travelers,
+      canDrive: formData.canDrive,
+    });
+    debugLog('state_change', 'Trip data created', { tripId: newTripData.id });
 
     setTripData(newTripData);
     setPhase('clarification');
@@ -132,6 +158,11 @@ export default function PlanPage() {
 
   // Handle sending message in clarification phase
   const handleClarificationMessage = async (message: string) => {
+    // Prevent duplicate requests
+    if (clarificationRequestInFlight.current || isTyping) {
+      return;
+    }
+
     // Add user message
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
@@ -141,10 +172,14 @@ export default function PlanPage() {
     };
     addMessage(userMessage);
     setTyping(true);
+    clarificationRequestInFlight.current = true;
+
+    // Capture current step before any async operations
+    const stepForThisRequest = clarificationStep;
 
     try {
       // Send with current step (which represents the question we're answering)
-      const data = await sendChatRequest(message, 'clarification', clarificationStep);
+      const data = await sendChatRequest(message, 'clarification', stepForThisRequest);
 
       const assistantMessage: ChatMessage = {
         id: `msg_${Date.now()}_assistant`,
@@ -158,16 +193,18 @@ export default function PlanPage() {
       // Increment step for next question
       setClarificationStep((prev) => prev + 1);
 
-      // Check if clarification is complete
+      // Check if clarification is complete - auto-trigger research phase
       if (data.next_phase === 'planning') {
-        // Start research phase
+        // Start research phase automatically (no user input needed)
         setTyping(false);
         startResearchPhase();
+        return; // Exit early since we're transitioning
       }
     } catch (error) {
       console.error('Chat error:', error);
     } finally {
       setTyping(false);
+      clarificationRequestInFlight.current = false;
     }
   };
 
@@ -199,35 +236,46 @@ export default function PlanPage() {
   // Request day options when entering planning phase or after selecting an option
   useEffect(() => {
     const requestDayOptions = async () => {
-      if (
-        currentStep === STEP_PLANNING &&
-        !isTyping &&
-        dayOptionsRequestedRef.current < currentDay
-      ) {
-        dayOptionsRequestedRef.current = currentDay;
-        setTyping(true);
-        setCurrentOptions(null);
+      // Guard against duplicate requests with multiple checks
+      if (currentStep !== STEP_PLANNING) return;
+      if (isTyping) return;
+      if (dayRequestInFlight.current) return;
+      if (dayOptionsRequestedRef.current >= currentDay) return;
 
-        try {
-          const data = await sendChatRequest('show options', 'planning', undefined, currentDay);
+      // Set guards immediately before any async work
+      dayRequestInFlight.current = true;
+      dayOptionsRequestedRef.current = currentDay;
 
-          const assistantMessage: ChatMessage = {
-            id: `msg_${Date.now()}_day${currentDay}`,
-            role: 'assistant',
-            content: data.message,
-            timestamp: new Date().toISOString(),
-            type: data.type,
-          };
-          addMessage(assistantMessage);
+      // Capture day for this request to prevent closure issues
+      const dayForThisRequest = currentDay;
 
-          if (data.options) {
-            setCurrentOptions(data.options);
-          }
-        } catch (error) {
-          console.error('Get day options error:', error);
-        } finally {
-          setTyping(false);
+      setTyping(true);
+      setCurrentOptions(null);
+
+      try {
+        const data = await sendChatRequest('get day plans', 'planning', undefined, dayForThisRequest);
+
+        const assistantMessage: ChatMessage = {
+          id: `msg_${Date.now()}_day${dayForThisRequest}`,
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date().toISOString(),
+          type: data.type,
+        };
+        addMessage(assistantMessage);
+
+        if (data.options) {
+          setCurrentOptions(data.options);
         }
+      } catch (error) {
+        console.error('Get day options error:', error);
+        // Reset ref on error so we can retry
+        if (dayOptionsRequestedRef.current === dayForThisRequest) {
+          dayOptionsRequestedRef.current = dayForThisRequest - 1;
+        }
+      } finally {
+        setTyping(false);
+        dayRequestInFlight.current = false;
       }
     };
 
@@ -236,6 +284,8 @@ export default function PlanPage() {
 
   // Handle option selection in planning phase
   const handleOptionSelect = async (option: Option) => {
+    debugLog('user_action', `Selected day ${currentDay} option`, { title: option.title, cost: option.cost });
+
     // Add user selection message
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}_select`,
@@ -369,7 +419,7 @@ export default function PlanPage() {
                 Help us personalize your {tripData?.destination} trip
               </p>
             </div>
-            <Card className="h-[500px] flex flex-col">
+            <Card className="h-[580px] flex flex-col">
               {isResearching ? (
                 <div className="flex-1 flex flex-col items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -401,7 +451,7 @@ export default function PlanPage() {
             </div>
             <div className="grid lg:grid-cols-5 gap-6">
               {/* Chat - 3 columns on large screens */}
-              <Card className="lg:col-span-3 h-[600px] flex flex-col">
+              <Card className="lg:col-span-3 h-[680px] flex flex-col">
                 <ChatWindow
                   messages={messages}
                   isTyping={isTyping}
@@ -412,7 +462,7 @@ export default function PlanPage() {
               </Card>
 
               {/* Preview - 2 columns on large screens */}
-              <Card className="lg:col-span-2 h-[600px]">
+              <Card className="lg:col-span-2 h-[680px]">
                 <ItineraryPreview
                   days={lockedDays}
                   currentDayNumber={currentDay}

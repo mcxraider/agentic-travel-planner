@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,12 +22,13 @@ import { BUDGET_CATEGORIES, TRIP_FOCUS_OPTIONS } from '@/lib/constants';
 import { BudgetCategory, TripFocus } from '@/types';
 
 interface FormData {
-  destination: string;
+  destinations: string[];
   startDate: Date | undefined;
   endDate: Date | undefined;
   budgetCategory: BudgetCategory | '';
   focus: TripFocus[];
   travelers: number;
+  canDrive: boolean;
   additionalNotes: string;
 }
 
@@ -37,12 +38,13 @@ interface InitialInputFormProps {
 
 export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
   const [formData, setFormData] = useState<FormData>({
-    destination: '',
+    destinations: [''],
     startDate: undefined,
     endDate: undefined,
     budgetCategory: '',
     focus: [],
     travelers: 1,
+    canDrive: false,
     additionalNotes: '',
   });
 
@@ -60,8 +62,8 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
-    if (!formData.destination.trim()) {
-      newErrors.destination = 'Please enter a destination';
+    if (!formData.destinations[0]?.trim()) {
+      newErrors.destinations = 'Please enter a destination';
     }
     if (!formData.startDate) {
       newErrors.startDate = 'Please select a start date';
@@ -101,11 +103,13 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
         <Input
           id="destination"
           placeholder="e.g., Tokyo, Japan"
-          value={formData.destination}
-          onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
-          className={cn(errors.destination && 'border-red-500')}
+          value={formData.destinations[0] || ''}
+          onChange={(e) =>
+            setFormData((prev) => ({ ...prev, destinations: [e.target.value] }))
+          }
+          className={cn(errors.destinations && 'border-red-500')}
         />
-        {errors.destination && <p className="text-sm text-red-500">{errors.destination}</p>}
+        {errors.destinations && <p className="text-sm text-red-500">{errors.destinations}</p>}
       </div>
 
       {/* Date Range */}
@@ -235,6 +239,28 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
           className={cn('w-32', errors.travelers && 'border-red-500')}
         />
         {errors.travelers && <p className="text-sm text-red-500">{errors.travelers}</p>}
+      </div>
+
+      {/* Can Drive */}
+      <div className="space-y-2">
+        <Label>Transportation</Label>
+        <label className="flex items-center space-x-3 rounded-lg border p-4 cursor-pointer hover:border-muted-foreground/50 transition-colors">
+          <Checkbox
+            checked={formData.canDrive}
+            onCheckedChange={(checked) =>
+              setFormData((prev) => ({ ...prev, canDrive: checked === true }))
+            }
+          />
+          <div className="flex items-center gap-2">
+            <Car className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <span className="text-sm font-medium">Can you drive?</span>
+              <p className="text-xs text-muted-foreground">
+                Check this if you&apos;re able to rent and drive a car during your trip
+              </p>
+            </div>
+          </div>
+        </label>
       </div>
 
       {/* Additional Notes */}
