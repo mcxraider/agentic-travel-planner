@@ -1,5 +1,5 @@
 import { TripData, UserProfile, PlanningPhase } from './trip';
-import { Itinerary, Event } from './itinerary';
+import { Itinerary, Event, Conflict } from './itinerary';
 import { Option } from './chat';
 
 // Chat API
@@ -63,11 +63,7 @@ export interface ValidateEditResponse {
   updated_itinerary?: Itinerary;
 }
 
-export interface Conflict {
-  day: number;
-  issue: string;
-  severity: 'low' | 'medium' | 'high';
-}
+// Using Conflict from itinerary.ts
 
 export interface Suggestion {
   id: string;

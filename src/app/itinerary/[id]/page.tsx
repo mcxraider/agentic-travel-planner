@@ -2,17 +2,29 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useItineraryStore, useTripStore } from '@/store';
+import { useItineraryStore, useTripStore, EventConflictMap } from '@/store';
 import {
   ItineraryHeader,
   TimelineView,
   EditChatSidebar,
   AddEventForm,
+  OptimizationModal,
+  AddAlternativeForm,
 } from '@/components/itinerary';
-import { Event } from '@/types';
+import { Event, Conflict, Optimization } from '@/types';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function ItineraryPage() {
   const router = useRouter();
@@ -25,6 +37,8 @@ export default function ItineraryPage() {
     editSidebarOpen,
     hasUnsavedChanges,
     undoStack,
+    warnings,
+    eventConflicts,
     setEditSidebarOpen,
     toggleEventSelection,
     clearSelection,
@@ -34,10 +48,28 @@ export default function ItineraryPage() {
     deleteEvent,
     addEvent,
     applyChanges,
+    addAlternative,
+    promoteAlternative,
+    dismissWarning,
+    setEventConflicts,
+    dismissEventConflict,
+    clearEventConflicts,
   } = useItineraryStore();
 
   const [addEventDayNumber, setAddEventDayNumber] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Confirmation dialog state
+  const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
+  const [pendingConflicts, setPendingConflicts] = useState<Conflict[]>([]);
+
+  // Optimization modal state
+  const [showOptimizationModal, setShowOptimizationModal] = useState(false);
+  const [optimizations, setOptimizations] = useState<Optimization[]>([]);
+
+  // Add alternative form state
+  const [addAlternativeEvent, setAddAlternativeEvent] = useState<{ dayNumber: number; event: Event } | null>(null);
 
   // Check if we have the necessary data
   useEffect(() => {
@@ -143,14 +175,181 @@ export default function ItineraryPage() {
     });
   }, [selectedEventIds, itinerary, pushUndo, deleteEvent, clearSelection, toast]);
 
-  // Handle apply changes
-  const handleApplyChanges = useCallback(() => {
+  // Handle apply changes - triggers validation
+  const handleApplyChanges = useCallback(async () => {
+    if (!itinerary) return;
+
+    setIsValidating(true);
+
+    try {
+      const response = await fetch('/api/mock/validate-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itinerary }),
+      });
+
+      const result = await response.json();
+
+      if (result.conflicts.length > 0) {
+        // Show toast with conflict count
+        toast({
+          title: `${result.conflicts.length} conflict${result.conflicts.length > 1 ? 's' : ''} detected`,
+          description: 'Conflicting events are highlighted in red. You can dismiss warnings or fix them.',
+          variant: 'destructive',
+        });
+
+        // Convert conflicts to event conflict map
+        const conflictMap: EventConflictMap = {};
+        result.conflicts.forEach((conflict: Conflict) => {
+          conflict.eventIds.forEach((eventId) => {
+            conflictMap[eventId] = conflict.message;
+          });
+        });
+
+        // Set conflicts in store (highlights events)
+        setEventConflicts(conflictMap);
+
+        // Store pending conflicts for confirmation dialog
+        setPendingConflicts(result.conflicts);
+
+        // Show confirmation dialog
+        setShowSaveConfirmDialog(true);
+      } else {
+        // No conflicts, save changes
+        clearEventConflicts();
+        applyChanges();
+        toast({
+          title: 'Changes saved',
+          description: 'Your itinerary has been updated.',
+        });
+      }
+    } catch (error) {
+      console.error('Validation error:', error);
+      // On error, save anyway
+      applyChanges();
+      toast({
+        title: 'Changes saved',
+        description: 'Your itinerary has been updated.',
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  }, [itinerary, applyChanges, toast, setEventConflicts, clearEventConflicts]);
+
+  // Handle confirming save with conflicts
+  const handleConfirmSaveWithConflicts = useCallback(() => {
+    setShowSaveConfirmDialog(false);
+    applyChanges();
+    toast({
+      title: 'Changes saved with warnings',
+      description: `${pendingConflicts.length} conflict${pendingConflicts.length > 1 ? 's' : ''} remain. You can dismiss them individually.`,
+    });
+    setPendingConflicts([]);
+  }, [applyChanges, toast, pendingConflicts.length]);
+
+  // Handle canceling save (go back to editing)
+  const handleCancelSave = useCallback(() => {
+    setShowSaveConfirmDialog(false);
+    setPendingConflicts([]);
+    // Keep the conflict highlighting so user can see what needs fixing
+  }, []);
+
+  // Handle dismissing event conflict
+  const handleDismissConflict = useCallback((eventId: string) => {
+    dismissEventConflict(eventId);
+  }, [dismissEventConflict]);
+
+  // Handle optimize itinerary
+  const handleOptimize = useCallback(async () => {
+    if (!itinerary) return;
+
+    setIsValidating(true);
+
+    try {
+      const response = await fetch('/api/mock/validate-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itinerary }),
+      });
+
+      const result = await response.json();
+
+      if (result.optimizations.length > 0) {
+        setOptimizations(result.optimizations);
+        setShowOptimizationModal(true);
+      } else {
+        toast({
+          title: 'Already optimized',
+          description: 'No optimization suggestions available.',
+        });
+      }
+    } catch (error) {
+      console.error('Optimization error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to get optimization suggestions.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  }, [itinerary, toast]);
+
+  // Handle optimization modal actions
+  const handleApplyOptimizations = useCallback((optimizationIds: string[]) => {
+    // In a real app, this would apply the selected optimizations
+    console.log('Applying optimizations:', optimizationIds);
+    setShowOptimizationModal(false);
+    applyChanges();
+    toast({
+      title: 'Changes saved',
+      description: `Applied ${optimizationIds.length} optimization(s).`,
+    });
+  }, [applyChanges, toast]);
+
+  const handleSkipOptimizations = useCallback(() => {
+    setShowOptimizationModal(false);
     applyChanges();
     toast({
       title: 'Changes saved',
       description: 'Your itinerary has been updated.',
     });
   }, [applyChanges, toast]);
+
+  // Handle adding alternative
+  const handleOpenAddAlternative = useCallback((dayNumber: number, event: Event) => {
+    setAddAlternativeEvent({ dayNumber, event });
+  }, []);
+
+  const handleAddAlternative = useCallback(
+    (dayNumber: number, primaryEventId: string, alternativeEvent: Event) => {
+      pushUndo();
+      addAlternative(dayNumber, primaryEventId, alternativeEvent);
+      toast({
+        title: 'Alternative added',
+        description: `Added "${alternativeEvent.title}" as an alternative.`,
+      });
+    },
+    [pushUndo, addAlternative, toast]
+  );
+
+  // Handle promoting alternative
+  const handlePromoteAlternative = useCallback(
+    (dayNumber: number, alternativeId: string) => {
+      pushUndo();
+      promoteAlternative(dayNumber, alternativeId);
+      toast({
+        title: 'Alternative swapped',
+        description: 'The alternative is now the primary option.',
+      });
+    },
+    [pushUndo, promoteAlternative, toast]
+  );
+
+  // Handle dismiss warning
+  const handleDismissWarning = useCallback((warningId: string) => {
+    dismissWarning(warningId);
+  }, [dismissWarning]);
 
   // Handle undo
   const handleUndo = useCallback(() => {
@@ -199,7 +398,9 @@ export default function ItineraryPage() {
         hasUnsavedChanges={hasUnsavedChanges}
         canUndo={undoStack.length > 0}
         isSidebarOpen={editSidebarOpen}
+        isValidating={isValidating}
         onApplyChanges={handleApplyChanges}
+        onOptimize={handleOptimize}
         onUndo={handleUndo}
         onToggleSidebar={() => setEditSidebarOpen(!editSidebarOpen)}
       />
@@ -215,10 +416,16 @@ export default function ItineraryPage() {
           <TimelineView
             itinerary={itinerary}
             selectedEventIds={selectedEventIds}
+            warnings={warnings}
+            eventConflicts={eventConflicts}
             onSelectEvent={handleSelectEvent}
             onDeleteEvent={handleDeleteEvent}
             onMoveEvent={handleMoveEvent}
             onAddEvent={(dayNumber) => setAddEventDayNumber(dayNumber)}
+            onAddAlternative={handleOpenAddAlternative}
+            onPromoteAlternative={handlePromoteAlternative}
+            onDismissWarning={handleDismissWarning}
+            onDismissConflict={handleDismissConflict}
             onDragStart={handleDragStart}
           />
         </main>
@@ -240,6 +447,45 @@ export default function ItineraryPage() {
         dayNumber={addEventDayNumber || 1}
         onClose={() => setAddEventDayNumber(null)}
         onAddEvent={handleAddEvent}
+      />
+
+      {/* Add Alternative Dialog */}
+      <AddAlternativeForm
+        isOpen={addAlternativeEvent !== null}
+        primaryEvent={addAlternativeEvent?.event || null}
+        dayNumber={addAlternativeEvent?.dayNumber || 1}
+        onClose={() => setAddAlternativeEvent(null)}
+        onAddAlternative={handleAddAlternative}
+      />
+
+      {/* Save with Conflicts Confirmation Dialog */}
+      <AlertDialog open={showSaveConfirmDialog} onOpenChange={setShowSaveConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save with conflicts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your itinerary has {pendingConflicts.length} conflict{pendingConflicts.length > 1 ? 's' : ''} that haven&apos;t been resolved.
+              Conflicting events are highlighted in red. You can save anyway and address them later, or go back to fix them now.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelSave}>
+              Go back and fix
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmSaveWithConflicts}>
+              Save anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Optimization Modal */}
+      <OptimizationModal
+        isOpen={showOptimizationModal}
+        optimizations={optimizations}
+        onClose={() => setShowOptimizationModal(false)}
+        onApplyOptimizations={handleApplyOptimizations}
+        onSkip={handleSkipOptimizations}
       />
     </div>
   );

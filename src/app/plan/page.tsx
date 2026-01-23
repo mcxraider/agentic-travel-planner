@@ -393,7 +393,7 @@ export default function PlanPage() {
                 Help us personalize your {tripData?.destination} trip
               </p>
             </div>
-            <Card className="h-[500px] flex flex-col">
+            <Card className="h-[580px] flex flex-col">
               {isResearching ? (
                 <div className="flex-1 flex flex-col items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -425,7 +425,7 @@ export default function PlanPage() {
             </div>
             <div className="grid lg:grid-cols-5 gap-6">
               {/* Chat - 3 columns on large screens */}
-              <Card className="lg:col-span-3 h-[600px] flex flex-col">
+              <Card className="lg:col-span-3 h-[680px] flex flex-col">
                 <ChatWindow
                   messages={messages}
                   isTyping={isTyping}
@@ -436,7 +436,7 @@ export default function PlanPage() {
               </Card>
 
               {/* Preview - 2 columns on large screens */}
-              <Card className="lg:col-span-2 h-[600px]">
+              <Card className="lg:col-span-2 h-[680px]">
                 <ItineraryPreview
                   days={lockedDays}
                   currentDayNumber={currentDay}

@@ -5,3 +5,5 @@ export { TimelineView } from './TimelineView';
 export { ItineraryHeader } from './ItineraryHeader';
 export { EditChatSidebar } from './EditChatSidebar';
 export { AddEventForm } from './AddEventForm';
+export { AddAlternativeForm } from './AddAlternativeForm';
+export { OptimizationModal } from './OptimizationModal';

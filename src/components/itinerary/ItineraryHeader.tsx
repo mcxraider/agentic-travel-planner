@@ -12,7 +12,9 @@ import {
   Check,
   Undo2,
   PanelRightOpen,
-  PanelRightClose
+  PanelRightClose,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
 
 interface ItineraryHeaderProps {
@@ -21,7 +23,9 @@ interface ItineraryHeaderProps {
   hasUnsavedChanges: boolean;
   canUndo: boolean;
   isSidebarOpen: boolean;
+  isValidating?: boolean;
   onApplyChanges: () => void;
+  onOptimize?: () => void;
   onUndo: () => void;
   onToggleSidebar: () => void;
 }
@@ -32,7 +36,9 @@ export function ItineraryHeader({
   hasUnsavedChanges,
   canUndo,
   isSidebarOpen,
+  isValidating = false,
   onApplyChanges,
+  onOptimize,
   onUndo,
   onToggleSidebar,
 }: ItineraryHeaderProps) {
@@ -109,14 +115,36 @@ export function ItineraryHeader({
               </Button>
             )}
 
+            {/* Optimize Button */}
+            {onOptimize && !hasUnsavedChanges && (
+              <Button
+                variant="outline"
+                onClick={onOptimize}
+                disabled={isValidating}
+                className="flex items-center gap-2"
+              >
+                <Sparkles className="h-4 w-4 text-yellow-500" />
+                Optimize
+              </Button>
+            )}
+
             {/* Apply Changes Button */}
             <Button
               onClick={onApplyChanges}
-              disabled={!hasUnsavedChanges}
+              disabled={!hasUnsavedChanges || isValidating}
               className="flex items-center gap-2"
             >
-              <Check className="h-4 w-4" />
-              Apply Changes
+              {isValidating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Validating...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Apply Changes
+                </>
+              )}
             </Button>
 
             {/* Toggle Sidebar Button */}
