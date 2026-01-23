@@ -19,7 +19,7 @@ export function Navbar() {
         className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 backdrop-blur-sm border shadow-sm hover:shadow-md hover:bg-white transition-all group"
       >
         <Compass className="h-5 w-5 text-blue-600 group-hover:rotate-45 transition-transform" />
-        <span className="font-bold text-lg text-gray-900">Wandr</span>
+        <span className="font-bold text-lg text-gray-900">Trippi</span>
       </Link>
     </nav>
   );

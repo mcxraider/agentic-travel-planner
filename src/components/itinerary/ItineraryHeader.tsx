@@ -50,13 +50,13 @@ export function ItineraryHeader({
         <div className="flex items-center justify-between">
           {/* Left: Logo + Trip Info */}
           <div className="flex items-center gap-6">
-            {/* Wandr Logo */}
+            {/* Trippi Logo */}
             <Link
               href="/"
               className="flex items-center gap-2 px-3 py-2 -ml-3 rounded-lg hover:bg-gray-100 transition-colors group"
             >
               <Compass className="h-5 w-5 text-blue-600 group-hover:rotate-45 transition-transform" />
-              <span className="font-bold text-lg text-gray-900">Wandr</span>
+              <span className="font-bold text-lg text-gray-900">Trippi</span>
             </Link>
 
             <div className="border-l pl-6">
@@ -71,7 +71,7 @@ export function ItineraryHeader({
                 </span>
                 <span className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
-                  {tripData.travelers} traveler{tripData.travelers > 1 ? 's' : ''}
+                  {tripData.travelers}
                 </span>
               </div>
             </div>

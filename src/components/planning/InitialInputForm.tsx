@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, X, Pencil, Check, Car } from 'lucide-react';
+import { CalendarIcon, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,50 +49,6 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editValue, setEditValue] = useState('');
-
-  // Location management functions
-  const addLocation = () => {
-    if (formData.destinations.length >= 10) return;
-    setFormData((prev) => ({
-      ...prev,
-      destinations: [...prev.destinations, ''],
-    }));
-  };
-
-  const removeLocation = (index: number) => {
-    if (formData.destinations.length <= 1) return;
-    setFormData((prev) => ({
-      ...prev,
-      destinations: prev.destinations.filter((_, i) => i !== index),
-    }));
-  };
-
-  const updateLocation = (index: number, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      destinations: prev.destinations.map((d, i) => (i === index ? value : d)),
-    }));
-  };
-
-  const startEditing = (index: number) => {
-    setEditingIndex(index);
-    setEditValue(formData.destinations[index]);
-  };
-
-  const saveEditing = () => {
-    if (editingIndex !== null) {
-      updateLocation(editingIndex, editValue);
-      setEditingIndex(null);
-      setEditValue('');
-    }
-  };
-
-  const cancelEditing = () => {
-    setEditingIndex(null);
-    setEditValue('');
-  };
 
   const handleFocusToggle = (value: TripFocus) => {
     setFormData((prev) => ({
@@ -106,9 +62,8 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
-    const validDestinations = formData.destinations.filter((d) => d.trim());
-    if (validDestinations.length === 0) {
-      newErrors.destinations = 'Please enter at least one destination';
+    if (!formData.destinations[0]?.trim()) {
+      newErrors.destinations = 'Please enter a destination';
     }
     if (!formData.startDate) {
       newErrors.startDate = 'Please select a start date';
@@ -142,103 +97,19 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-xl mx-auto">
-      {/* Destinations (Multi-city) */}
+      {/* Destination */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Where do you want to go?</Label>
-          <span className="text-xs text-muted-foreground">
-            {formData.destinations.length}/10 locations
-          </span>
-        </div>
-        <div className="space-y-2">
-          {formData.destinations.map((destination, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground w-6">{index + 1}.</span>
-              {editingIndex === index ? (
-                <>
-                  <Input
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    placeholder="e.g., Tokyo, Japan"
-                    className="flex-1"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveEditing();
-                      if (e.key === 'Escape') cancelEditing();
-                    }}
-                  />
-                  <Button type="button" variant="ghost" size="icon" onClick={saveEditing}>
-                    <Check className="h-4 w-4 text-green-600" />
-                  </Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={cancelEditing}>
-                    <X className="h-4 w-4 text-gray-400" />
-                  </Button>
-                </>
-              ) : destination ? (
-                <>
-                  <div className="flex-1 px-3 py-2 bg-gray-50 rounded-md text-sm">
-                    {destination}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => startEditing(index)}
-                  >
-                    <Pencil className="h-4 w-4 text-gray-400" />
-                  </Button>
-                  {formData.destinations.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeLocation(index)}
-                    >
-                      <X className="h-4 w-4 text-red-400" />
-                    </Button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Input
-                    placeholder="e.g., Tokyo, Japan"
-                    value={destination}
-                    onChange={(e) => updateLocation(index, e.target.value)}
-                    className={cn('flex-1', errors.destinations && 'border-red-500')}
-                  />
-                  {formData.destinations.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeLocation(index)}
-                    >
-                      <X className="h-4 w-4 text-red-400" />
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        {formData.destinations.length < 10 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addLocation}
-            className="w-full border-dashed"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add another destination
-          </Button>
-        )}
+        <Label htmlFor="destination">Where do you want to go?</Label>
+        <Input
+          id="destination"
+          placeholder="e.g., Tokyo, Japan"
+          value={formData.destinations[0] || ''}
+          onChange={(e) =>
+            setFormData((prev) => ({ ...prev, destinations: [e.target.value] }))
+          }
+          className={cn(errors.destinations && 'border-red-500')}
+        />
         {errors.destinations && <p className="text-sm text-red-500">{errors.destinations}</p>}
-        {formData.destinations.length > 1 && (
-          <p className="text-xs text-muted-foreground">
-            Destinations will be visited in the order listed above.
-          </p>
-        )}
       </div>
 
       {/* Date Range */}

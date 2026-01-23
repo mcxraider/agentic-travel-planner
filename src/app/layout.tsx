@@ -8,7 +8,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Wandr - AI Trip Planner',
+  title: 'trippi',
   description: 'AI-powered trip planning - Plan your trip in minutes, not hours',
 };
 

@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   X,
   Layers,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -137,9 +138,6 @@ export function EventCard({
     e.stopPropagation();
 
     if (!hasAlternatives || !onVisualSelectionChange || !event.alternativeGroupId) {
-      // If no alternatives or no handler, fall back to selection
-      const multiSelect = e.metaKey || e.ctrlKey || e.shiftKey;
-      onSelect(event.id, multiSelect);
       return;
     }
 
@@ -147,6 +145,12 @@ export function EventCard({
     const nextIndex = (currentDisplayIndex + 1) % totalOptions;
     const nextEvent = allOptions[nextIndex];
     onVisualSelectionChange(event.alternativeGroupId, nextEvent.id);
+  };
+
+  // Handle card click for selection
+  const handleCardClick = (e: React.MouseEvent) => {
+    const multiSelect = e.metaKey || e.ctrlKey || e.shiftKey;
+    onSelect(event.id, multiSelect);
   };
 
   const handleAddAlternative = (e: React.MouseEvent) => {
@@ -273,49 +277,65 @@ export function EventCard({
               </Button>
             )}
 
-            {/* Add Alternative Button (only show if less than 2 alternatives) */}
-            {onAddAlternative && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="flex-shrink-0 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity rounded-full border border-gray-300 bg-white hover:bg-gray-50 hover:border-blue-400"
-                onClick={handleAddAlternative}
-                title="Add alternative"
-              >
-                <Plus className="h-3.5 w-3.5 text-gray-500" />
-              </Button>
-            )}
+            {/* Action buttons row: Alt | + | Delete */}
+            <div className="flex flex-row gap-1 flex-shrink-0">
+              {/* Alt Button - Cycle through alternatives */}
+              {hasAlternatives && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity rounded border border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400"
+                  onClick={handleCycle}
+                  title="Cycle through alternatives"
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5 text-blue-600" />
+                </Button>
+              )}
 
-            {/* Delete Button with Confirmation Popover */}
-            <Popover open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-              <PopoverTrigger asChild>
+              {/* Add Alternative Button */}
+              {onAddAlternative && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 hover:bg-red-50"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowDeleteConfirm(true);
-                  }}
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity rounded-full border border-gray-300 bg-white hover:bg-gray-50 hover:border-blue-400"
+                  onClick={handleAddAlternative}
+                  title="Add alternative"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5 text-gray-500" />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-2" side="top" align="end">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="w-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowDeleteConfirm(false);
-                    onDelete(dayNumber, displayedEvent.id);
-                  }}
-                >
-                  Confirm
-                </Button>
-              </PopoverContent>
-            </Popover>
+              )}
+
+              {/* Delete Button with Confirmation Popover */}
+              <Popover open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(true);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-2" side="top" align="end">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(false);
+                      onDelete(dayNumber, displayedEvent.id);
+                    }}
+                  >
+                    Confirm
+                  </Button>
+                </PopoverContent>
+              </Popover>
+            </div>
           </>
         )}
       </div>
@@ -346,15 +366,12 @@ export function EventCard({
     >
       {/* Container with padding for stack effect */}
       <div
-        className={cn(
-          'group relative cursor-pointer',
-          hasAlternatives && 'cursor-pointer'
-        )}
+        className="group relative cursor-pointer"
         style={{
           paddingRight: stackPadding,
           paddingBottom: stackPadding,
         }}
-        onClick={handleCycle}
+        onClick={handleCardClick}
       >
         {/* Background stacked cards (rendered first, so they appear behind) */}
         <div className="relative" style={{ minHeight: '80px' }}>
@@ -367,12 +384,6 @@ export function EventCard({
         </div>
       </div>
 
-      {/* Click hint for stacked cards */}
-      {hasAlternatives && (
-        <div className="absolute bottom-1 right-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[4]">
-          Click to cycle
-        </div>
-      )}
     </div>
   );
 }
