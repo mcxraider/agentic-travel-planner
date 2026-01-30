@@ -3,13 +3,36 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, differenceInDays, addDays } from 'date-fns';
-import { ProgressBar, InitialInputForm, ChatWindow, ItineraryPreview } from '@/components/planning';
-import { useTripStore, useChatStore, useItineraryStore, useDebugLog } from '@/store';
+import {
+  ProgressBar,
+  InitialInputForm,
+  ChatWindow,
+  ItineraryPreview,
+} from '@/components/planning';
+import { TripInputFormData } from '@/components/planning/InitialInputForm';
+import {
+  QuestionCard,
+  CompletenessProgress,
+  ClarificationSummary,
+  ApiError,
+} from '@/components/clarification';
+import {
+  useTripStore,
+  useChatStore,
+  useItineraryStore,
+  useDebugLog,
+  useClarificationStore,
+} from '@/store';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { TripData, Day, Option, ChatMessage } from '@/types';
+import { TripData, Day, Option, ChatMessage, StartSessionRequest } from '@/types';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { API_ENDPOINTS } from '@/lib/constants';
+import {
+  startClarificationSession,
+  submitClarificationResponses,
+  ClarificationApiError,
+} from '@/lib/api';
 
 // Step numbers for the wizard
 const STEP_INPUT = 1;
@@ -17,39 +40,45 @@ const STEP_CLARIFICATION = 2;
 const STEP_PLANNING = 3;
 const STEP_REVIEW = 4;
 
-interface FormData {
-  destinations: string[];
-  startDate: Date | undefined;
-  endDate: Date | undefined;
-  budgetCategory: string;
-  focus: string[];
-  travelers: number;
-  canDrive: boolean;
-  additionalNotes: string;
-}
-
 export default function PlanPage() {
   const router = useRouter();
   const debugLog = useDebugLog();
   const [currentStep, setCurrentStep] = useState(STEP_INPUT);
   const [isResearching, setIsResearching] = useState(false);
-  const [clarificationStep, setClarificationStep] = useState(0);
   const [currentDay, setCurrentDay] = useState(1);
   const [totalDays, setTotalDays] = useState(5);
   const [lockedDays, setLockedDays] = useState<Day[]>([]);
   const [currentOptions, setCurrentOptions] = useState<Option[] | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { tripData, setTripData, setPhase } = useTripStore();
+  const { tripData, userProfile, setTripData, setPhase } = useTripStore();
   const { setItinerary } = useItineraryStore();
   const { messages, isTyping, addMessage, setTyping, clearChat } = useChatStore();
 
+  // Clarification store
+  const {
+    status: clarificationStatus,
+    sessionId,
+    questions,
+    answers,
+    completenessScore,
+    collectedData,
+    error: clarificationError,
+    startSession,
+    setAnswer,
+    setQuestions,
+    setCompletenessScore,
+    incrementRound,
+    setComplete,
+    setError: setClarificationError,
+    reset: resetClarification,
+  } = useClarificationStore();
+
   // Refs to track initialization and prevent duplicate requests
-  const conversationStartedRef = useRef(false);
   const dayOptionsRequestedRef = useRef<number>(0);
-  const clarificationRequestInFlight = useRef(false);
   const dayRequestInFlight = useRef(false);
 
-  // Helper to send chat API request
+  // Helper to send chat API request (for planning phase)
   const sendChatRequest = useCallback(
     async (
       message: string,
@@ -80,180 +109,221 @@ export default function PlanPage() {
       });
       const data = await response.json();
 
-      debugLog('api_response', `Chat API response: ${phase}`, { type: data.type, hasOptions: !!data.options });
+      debugLog('api_response', `Chat API response: ${phase}`, {
+        type: data.type,
+        hasOptions: !!data.options,
+      });
 
       return data;
     },
     [totalDays, tripData, debugLog]
   );
 
-  // Handle initial form submission
-  const handleFormSubmit = (formData: FormData) => {
-    if (!formData.startDate || !formData.endDate) return;
+  // Handle initial form submission - Start clarification session
+  const handleFormSubmit = async (formData: TripInputFormData) => {
+    if (!formData.start_date || !formData.end_date) return;
 
-    const days = differenceInDays(formData.endDate, formData.startDate) + 1;
+    setIsSubmitting(true);
+    setClarificationError(null);
+
+    const days = differenceInDays(formData.end_date, formData.start_date) + 1;
     setTotalDays(days);
 
-    // Filter out empty destinations
-    const validDestinations = formData.destinations.filter((d) => d.trim());
-
-    const newTripData: TripData = {
-      id: `trip_${Date.now()}`,
-      destination: validDestinations[0] || '', // Primary destination for backwards compatibility
-      destinations: validDestinations,
-      startDate: formData.startDate.toISOString(),
-      endDate: formData.endDate.toISOString(),
-      budgetCategory: formData.budgetCategory as TripData['budgetCategory'],
-      focus: formData.focus as TripData['focus'],
-      travelers: formData.travelers,
-      canDrive: formData.canDrive,
-      additionalNotes: formData.additionalNotes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    // Build the API request
+    const request: StartSessionRequest = {
+      // User profile
+      user_name: userProfile.user_name || 'Guest',
+      citizenship: userProfile.citizenship || undefined,
+      health_limitations: userProfile.health_limitations || undefined,
+      work_obligations: userProfile.work_obligations || undefined,
+      dietary_restrictions: userProfile.dietary_restrictions || undefined,
+      specific_interests:
+        userProfile.specific_interests && userProfile.specific_interests.length > 0
+          ? userProfile.specific_interests
+          : undefined,
+      // Trip basics
+      destination: formData.destination,
+      destination_cities:
+        formData.destination_cities.length > 0
+          ? formData.destination_cities
+          : undefined,
+      start_date: format(formData.start_date, 'yyyy-MM-dd'),
+      end_date: format(formData.end_date, 'yyyy-MM-dd'),
+      budget: formData.budget as number,
+      currency: formData.currency,
+      travel_party: formData.travel_party,
+      budget_scope: formData.budget_scope,
     };
 
-    debugLog('user_action', 'Submitted trip form', {
-      destinations: validDestinations,
+    debugLog('user_action', 'Starting clarification session', {
+      destination: formData.destination,
       days,
-      budget: formData.budgetCategory,
-      travelers: formData.travelers,
-      canDrive: formData.canDrive,
+      budget: formData.budget,
     });
-    debugLog('state_change', 'Trip data created', { tripId: newTripData.id });
-
-    setTripData(newTripData);
-    setPhase('clarification');
-    setCurrentStep(STEP_CLARIFICATION);
-  };
-
-  // Start clarification chat when entering step 2
-  useEffect(() => {
-    const startClarification = async () => {
-      if (currentStep === STEP_CLARIFICATION && !conversationStartedRef.current) {
-        conversationStartedRef.current = true;
-        clearChat();
-        setTyping(true);
-
-        try {
-          const data = await sendChatRequest('start', 'clarification', 0);
-          const assistantMessage: ChatMessage = {
-            id: `msg_${Date.now()}_assistant`,
-            role: 'assistant',
-            content: data.message,
-            timestamp: new Date().toISOString(),
-            type: data.type,
-          };
-          addMessage(assistantMessage);
-          setClarificationStep(1); // Ready for first answer
-        } catch (error) {
-          console.error('Start conversation error:', error);
-        } finally {
-          setTyping(false);
-        }
-      }
-    };
-
-    startClarification();
-  }, [currentStep, sendChatRequest, clearChat, setTyping, addMessage]);
-
-  // Handle sending message in clarification phase
-  const handleClarificationMessage = async (message: string) => {
-    // Prevent duplicate requests
-    if (clarificationRequestInFlight.current || isTyping) {
-      return;
-    }
-
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      role: 'user',
-      content: message,
-      timestamp: new Date().toISOString(),
-    };
-    addMessage(userMessage);
-    setTyping(true);
-    clarificationRequestInFlight.current = true;
-
-    // Capture current step before any async operations
-    const stepForThisRequest = clarificationStep;
 
     try {
-      // Send with current step (which represents the question we're answering)
-      const data = await sendChatRequest(message, 'clarification', stepForThisRequest);
+      const response = await startClarificationSession(request);
 
-      const assistantMessage: ChatMessage = {
-        id: `msg_${Date.now()}_assistant`,
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date().toISOString(),
-        type: data.type,
+      debugLog('api_response', 'Clarification session started', {
+        sessionId: response.session_id,
+        questionCount: response.questions.length,
+      });
+
+      // Initialize clarification store
+      startSession(
+        response.session_id,
+        response.questions,
+        response.state.completeness_score
+      );
+
+      // Store trip data for later use
+      const newTripData: TripData = {
+        id: `trip_${Date.now()}`,
+        destination: formData.destination,
+        destinations:
+          formData.destination_cities.length > 0
+            ? [formData.destination, ...formData.destination_cities]
+            : [formData.destination],
+        startDate: formData.start_date.toISOString(),
+        endDate: formData.end_date.toISOString(),
+        budgetCategory: 'moderate', // Will be refined by clarification
+        focus: [],
+        travelers: 1,
+        canDrive: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      addMessage(assistantMessage);
 
-      // Increment step for next question
-      setClarificationStep((prev) => prev + 1);
-
-      // Check if clarification is complete - auto-trigger research phase
-      if (data.next_phase === 'planning') {
-        // Start research phase automatically (no user input needed)
-        setTyping(false);
-        startResearchPhase();
-        return; // Exit early since we're transitioning
-      }
+      setTripData(newTripData);
+      setPhase('clarification');
+      setCurrentStep(STEP_CLARIFICATION);
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('Failed to start clarification session:', error);
+      if (error instanceof ClarificationApiError) {
+        setClarificationError(error.message);
+      } else {
+        setClarificationError(
+          'Failed to connect to the server. Please try again.'
+        );
+      }
     } finally {
-      setTyping(false);
-      clarificationRequestInFlight.current = false;
+      setIsSubmitting(false);
     }
   };
 
-  // Research phase with 10-second delay
-  const startResearchPhase = async () => {
+  // Handle submitting answers in clarification phase
+  const handleSubmitAnswers = async () => {
+    if (!sessionId) return;
+
+    setIsSubmitting(true);
+    setClarificationError(null);
+
+    debugLog('user_action', 'Submitting clarification answers', {
+      answerCount: Object.keys(answers).length,
+    });
+
+    try {
+      const response = await submitClarificationResponses(sessionId, answers);
+
+      debugLog('api_response', 'Clarification response received', {
+        complete: response.complete,
+        hasMoreQuestions: !!response.questions,
+      });
+
+      if (response.complete && response.collected_data) {
+        // Clarification complete - set progress to 100% before completing
+        setCompletenessScore(100);
+        setComplete(response.collected_data);
+      } else if (response.questions && response.state) {
+        // More questions
+        setQuestions(response.questions);
+        setCompletenessScore(response.state.completeness_score);
+        incrementRound();
+      }
+    } catch (error) {
+      console.error('Failed to submit answers:', error);
+      if (error instanceof ClarificationApiError) {
+        setClarificationError(error.message);
+        // If session not found, allow restart
+        if (error.statusCode === 404) {
+          resetClarification();
+        }
+      } else {
+        setClarificationError(
+          'Failed to submit answers. Please try again.'
+        );
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Retry after error
+  const handleRetry = () => {
+    setClarificationError(null);
+    if (clarificationStatus === 'idle') {
+      // Need to restart from form
+      setCurrentStep(STEP_INPUT);
+    }
+  };
+
+  // Proceed to planning phase after viewing summary
+  const handleProceedToPlanning = () => {
     setIsResearching(true);
+    clearChat();
 
     // Add "researching" message
     const researchMessage: ChatMessage = {
       id: `msg_${Date.now()}_research`,
       role: 'assistant',
-      content: 'Researching your trip... This will take a moment.',
+      content: 'Researching your trip based on your preferences... This will take a moment.',
       timestamp: new Date().toISOString(),
       type: 'info',
     };
     addMessage(researchMessage);
 
-    // Wait 10 seconds
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-
-    // Transition to planning phase
-    setIsResearching(false);
-    setPhase('planning');
-    setCurrentStep(STEP_PLANNING);
-    setCurrentDay(1);
-    dayOptionsRequestedRef.current = 0;
+    // Wait 5 seconds then transition to planning
+    setTimeout(() => {
+      setIsResearching(false);
+      setPhase('planning');
+      setCurrentStep(STEP_PLANNING);
+      setCurrentDay(1);
+      dayOptionsRequestedRef.current = 0;
+    }, 5000);
   };
+
+  // Check if all current questions are answered
+  const allQuestionsAnswered = questions.every((q) => {
+    const answer = answers[q.field];
+    if (Array.isArray(answer)) {
+      return answer.length > 0;
+    }
+    return !!answer;
+  });
 
   // Request day options when entering planning phase or after selecting an option
   useEffect(() => {
     const requestDayOptions = async () => {
-      // Guard against duplicate requests with multiple checks
       if (currentStep !== STEP_PLANNING) return;
       if (isTyping) return;
       if (dayRequestInFlight.current) return;
       if (dayOptionsRequestedRef.current >= currentDay) return;
 
-      // Set guards immediately before any async work
       dayRequestInFlight.current = true;
       dayOptionsRequestedRef.current = currentDay;
 
-      // Capture day for this request to prevent closure issues
       const dayForThisRequest = currentDay;
 
       setTyping(true);
       setCurrentOptions(null);
 
       try {
-        const data = await sendChatRequest('get day plans', 'planning', undefined, dayForThisRequest);
+        const data = await sendChatRequest(
+          'get day plans',
+          'planning',
+          undefined,
+          dayForThisRequest
+        );
 
         const assistantMessage: ChatMessage = {
           id: `msg_${Date.now()}_day${dayForThisRequest}`,
@@ -269,7 +339,6 @@ export default function PlanPage() {
         }
       } catch (error) {
         console.error('Get day options error:', error);
-        // Reset ref on error so we can retry
         if (dayOptionsRequestedRef.current === dayForThisRequest) {
           dayOptionsRequestedRef.current = dayForThisRequest - 1;
         }
@@ -284,9 +353,11 @@ export default function PlanPage() {
 
   // Handle option selection in planning phase
   const handleOptionSelect = async (option: Option) => {
-    debugLog('user_action', `Selected day ${currentDay} option`, { title: option.title, cost: option.cost });
+    debugLog('user_action', `Selected day ${currentDay} option`, {
+      title: option.title,
+      cost: option.cost,
+    });
 
-    // Add user selection message
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}_select`,
       role: 'user',
@@ -295,7 +366,6 @@ export default function PlanPage() {
     };
     addMessage(userMessage);
 
-    // Lock the current day with the selected option
     const dayDate = tripData
       ? addDays(new Date(tripData.startDate), currentDay - 1)
       : new Date();
@@ -307,7 +377,10 @@ export default function PlanPage() {
       events: option.events_preview,
       summary: {
         total_cost: option.cost,
-        active_hours: option.events_preview.reduce((acc, e) => acc + e.duration_minutes / 60, 0),
+        active_hours: option.events_preview.reduce(
+          (acc, e) => acc + e.duration_minutes / 60,
+          0
+        ),
         rest_hours: 2,
         energy_level: option.energy_level as Day['summary']['energy_level'],
       },
@@ -317,9 +390,7 @@ export default function PlanPage() {
     setLockedDays((prev) => [...prev, newDay]);
     setCurrentOptions(null);
 
-    // Check if this was the last day
     if (currentDay >= totalDays) {
-      // Add completion message
       const completeMessage: ChatMessage = {
         id: `msg_${Date.now()}_complete`,
         role: 'assistant',
@@ -331,22 +402,19 @@ export default function PlanPage() {
       addMessage(completeMessage);
       setCurrentStep(STEP_REVIEW);
     } else {
-      // Add confirmation and move to next day
       const confirmMessage: ChatMessage = {
         id: `msg_${Date.now()}_confirm`,
         role: 'assistant',
-        content: `Great choice! Day ${currentDay} is locked in with "${option.title}". ✓\n\nMoving on to Day ${currentDay + 1}...`,
+        content: `Great choice! Day ${currentDay} is locked in with "${option.title}".\n\nMoving on to Day ${currentDay + 1}...`,
         timestamp: new Date().toISOString(),
         type: 'confirmation',
       };
       addMessage(confirmMessage);
-
-      // Move to next day
       setCurrentDay((prev) => prev + 1);
     }
   };
 
-  // Handle planning message (text input instead of option click)
+  // Handle planning message (text input)
   const handlePlanningMessage = async (message: string) => {
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}`,
@@ -356,7 +424,6 @@ export default function PlanPage() {
     };
     addMessage(userMessage);
 
-    // Simple response for text messages during planning
     const assistantMessage: ChatMessage = {
       id: `msg_${Date.now()}_response`,
       role: 'assistant',
@@ -402,41 +469,113 @@ export default function PlanPage() {
           <div className="max-w-xl mx-auto">
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold mb-2">Let&apos;s plan your trip</h1>
-              <p className="text-muted-foreground">Tell us about your upcoming adventure</p>
+              <p className="text-muted-foreground">
+                Tell us about your upcoming adventure
+              </p>
             </div>
             <Card className="p-6">
-              <InitialInputForm onSubmit={handleFormSubmit} />
+              {clarificationError && (
+                <div className="mb-6">
+                  <ApiError
+                    message={clarificationError}
+                    onRetry={handleRetry}
+                    isNetworkError={clarificationError.includes('not responding')}
+                  />
+                </div>
+              )}
+              <InitialInputForm
+                onSubmit={handleFormSubmit}
+                isLoading={isSubmitting}
+              />
             </Card>
           </div>
         )}
 
-        {/* Step 2: Clarification Chat */}
+        {/* Step 2: Clarification Questions */}
         {currentStep === STEP_CLARIFICATION && (
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold mb-2">A few quick questions</h1>
+              <h1 className="text-2xl font-bold mb-2">
+                {clarificationStatus === 'complete'
+                  ? 'Review Your Preferences'
+                  : 'A few quick questions'}
+              </h1>
               <p className="text-muted-foreground">
                 Help us personalize your {tripData?.destination} trip
               </p>
             </div>
-            <Card className="h-[580px] flex flex-col">
-              {isResearching ? (
-                <div className="flex-1 flex flex-col items-center justify-center">
+
+            {/* Progress */}
+            <div className="mb-6">
+              <CompletenessProgress score={completenessScore} />
+            </div>
+
+            {/* Error */}
+            {clarificationError && (
+              <div className="mb-6">
+                <ApiError
+                  message={clarificationError}
+                  onRetry={handleRetry}
+                  isNetworkError={clarificationError.includes('not responding')}
+                />
+              </div>
+            )}
+
+            {/* Researching state */}
+            {isResearching ? (
+              <Card className="p-8">
+                <div className="flex flex-col items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-                  <p className="text-muted-foreground">Researching your trip...</p>
+                  <p className="text-muted-foreground">
+                    Researching your trip...
+                  </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Finding the best options for you
+                    Finding the best options based on your preferences
                   </p>
                 </div>
-              ) : (
-                <ChatWindow
-                  messages={messages}
-                  isTyping={isTyping}
-                  onSendMessage={handleClarificationMessage}
-                  disabled={isResearching}
-                />
-              )}
-            </Card>
+              </Card>
+            ) : clarificationStatus === 'complete' && collectedData ? (
+              // Summary view
+              <div className="space-y-6">
+                <ClarificationSummary collectedData={collectedData} />
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={handleProceedToPlanning}
+                >
+                  Continue to Planning
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              // Questions view
+              <div className="space-y-4">
+                {questions.map((question) => (
+                  <QuestionCard
+                    key={question.question_id}
+                    question={question}
+                    value={answers[question.field]}
+                    onChange={setAnswer}
+                  />
+                ))}
+
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={handleSubmitAnswers}
+                  disabled={!allQuestionsAnswered || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Continue'
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -447,7 +586,9 @@ export default function PlanPage() {
               <h1 className="text-2xl font-bold mb-2">
                 Planning Day {currentDay} of {totalDays}
               </h1>
-              <p className="text-muted-foreground">Choose how you&apos;d like to spend each day</p>
+              <p className="text-muted-foreground">
+                Choose how you&apos;d like to spend each day
+              </p>
             </div>
             <div className="grid lg:grid-cols-5 gap-6">
               {/* Chat - 3 columns on large screens */}
@@ -494,7 +635,8 @@ export default function PlanPage() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Your itinerary is ready!</h1>
               <p className="text-muted-foreground mb-6">
-                We&apos;ve created a {totalDays}-day trip to {tripData?.destination} just for you.
+                We&apos;ve created a {totalDays}-day trip to {tripData?.destination}{' '}
+                just for you.
               </p>
             </div>
 
@@ -513,13 +655,18 @@ export default function PlanPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Dates</span>
                   <span>
-                    {tripData?.startDate && format(new Date(tripData.startDate), 'MMM d')} -{' '}
-                    {tripData?.endDate && format(new Date(tripData.endDate), 'MMM d, yyyy')}
+                    {tripData?.startDate &&
+                      format(new Date(tripData.startDate), 'MMM d')}{' '}
+                    -{' '}
+                    {tripData?.endDate &&
+                      format(new Date(tripData.endDate), 'MMM d, yyyy')}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Estimated Cost</span>
-                  <span>${lockedDays.reduce((acc, day) => acc + day.summary.total_cost, 0)}</span>
+                  <span>
+                    ${lockedDays.reduce((acc, day) => acc + day.summary.total_cost, 0)}
+                  </span>
                 </div>
               </div>
             </Card>

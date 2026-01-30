@@ -17,11 +17,12 @@ export interface TripData {
 }
 
 export interface UserProfile {
-  departure_city?: string;
-  hiking_level?: 'beginner' | 'intermediate' | 'advanced';
-  pace_preference?: 'relaxed' | 'moderate' | 'packed';
-  dietary_restrictions?: string[];
-  interests?: string[];
+  user_name?: string;
+  citizenship?: string;
+  health_limitations?: string;
+  work_obligations?: string;
+  dietary_restrictions?: string;
+  specific_interests?: string[];
 }
 
 export type PlanningPhase = 'input' | 'clarification' | 'planning' | 'review' | 'editing';
