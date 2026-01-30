@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { TripData, UserProfile, PlanningPhase } from '@/types';
 
 interface TripState {
@@ -21,22 +22,33 @@ const initialState: TripState = {
   currentPhase: 'input',
 };
 
-export const useTripStore = create<TripState & TripActions>((set) => ({
-  ...initialState,
+export const useTripStore = create<TripState & TripActions>()(
+  persist(
+    (set) => ({
+      ...initialState,
 
-  setTripData: (data) => set({ tripData: data }),
+      setTripData: (data) => set({ tripData: data }),
 
-  updateTripData: (data) =>
-    set((state) => ({
-      tripData: state.tripData ? { ...state.tripData, ...data } : null,
-    })),
+      updateTripData: (data) =>
+        set((state) => ({
+          tripData: state.tripData ? { ...state.tripData, ...data } : null,
+        })),
 
-  updateUserProfile: (profile) =>
-    set((state) => ({
-      userProfile: { ...state.userProfile, ...profile },
-    })),
+      updateUserProfile: (profile) =>
+        set((state) => ({
+          userProfile: { ...state.userProfile, ...profile },
+        })),
 
-  setPhase: (phase) => set({ currentPhase: phase }),
+      setPhase: (phase) => set({ currentPhase: phase }),
 
-  reset: () => set(initialState),
-}));
+      reset: () => set(initialState),
+    }),
+    {
+      name: 'trip-storage',
+      partialize: (state) => ({
+        // Persist user profile across sessions
+        userProfile: state.userProfile,
+      }),
+    }
+  )
+);

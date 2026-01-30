@@ -1,16 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { format } from 'date-fns';
-import { CalendarIcon, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -18,70 +12,69 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { BUDGET_CATEGORIES, TRIP_FOCUS_OPTIONS } from '@/lib/constants';
-import { BudgetCategory, TripFocus } from '@/types';
+import { DatePickerField, MultiTextInput } from '@/components/form';
+import {
+  CURRENCY_OPTIONS,
+  TRAVEL_PARTY_OPTIONS,
+  BUDGET_SCOPE_OPTIONS,
+} from '@/lib/constants';
 
-interface FormData {
-  destinations: string[];
-  startDate: Date | undefined;
-  endDate: Date | undefined;
-  budgetCategory: BudgetCategory | '';
-  focus: TripFocus[];
-  travelers: number;
-  canDrive: boolean;
-  additionalNotes: string;
+/**
+ * Form data structure matching the StartSessionRequest for clarification API
+ */
+export interface TripInputFormData {
+  destination: string;
+  destination_cities: string[];
+  start_date: Date | undefined;
+  end_date: Date | undefined;
+  budget: number | '';
+  currency: string;
+  travel_party: string;
+  budget_scope: string;
 }
 
 interface InitialInputFormProps {
-  onSubmit: (data: FormData) => void;
+  onSubmit: (data: TripInputFormData) => void;
+  isLoading?: boolean;
 }
 
-export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
-  const [formData, setFormData] = useState<FormData>({
-    destinations: [''],
-    startDate: undefined,
-    endDate: undefined,
-    budgetCategory: '',
-    focus: [],
-    travelers: 1,
-    canDrive: false,
-    additionalNotes: '',
+export function InitialInputForm({ onSubmit, isLoading }: InitialInputFormProps) {
+  const [formData, setFormData] = useState<TripInputFormData>({
+    destination: '',
+    destination_cities: [],
+    start_date: undefined,
+    end_date: undefined,
+    budget: '',
+    currency: 'USD',
+    travel_party: '1 adult',
+    budget_scope: 'Total trip budget',
   });
 
-  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
-
-  const handleFocusToggle = (value: TripFocus) => {
-    setFormData((prev) => ({
-      ...prev,
-      focus: prev.focus.includes(value)
-        ? prev.focus.filter((f) => f !== value)
-        : [...prev.focus, value],
-    }));
-  };
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof TripInputFormData, string>>
+  >({});
 
   const validate = (): boolean => {
-    const newErrors: Partial<Record<keyof FormData, string>> = {};
+    const newErrors: Partial<Record<keyof TripInputFormData, string>> = {};
 
-    if (!formData.destinations[0]?.trim()) {
-      newErrors.destinations = 'Please enter a destination';
+    if (!formData.destination.trim()) {
+      newErrors.destination = 'Please enter a destination';
     }
-    if (!formData.startDate) {
-      newErrors.startDate = 'Please select a start date';
+    if (!formData.start_date) {
+      newErrors.start_date = 'Please select a start date';
     }
-    if (!formData.endDate) {
-      newErrors.endDate = 'Please select an end date';
+    if (!formData.end_date) {
+      newErrors.end_date = 'Please select an end date';
     }
-    if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
-      newErrors.endDate = 'End date must be after start date';
+    if (
+      formData.start_date &&
+      formData.end_date &&
+      formData.start_date > formData.end_date
+    ) {
+      newErrors.end_date = 'End date must be after start date';
     }
-    if (!formData.budgetCategory) {
-      newErrors.budgetCategory = 'Please select a budget category';
-    }
-    if (formData.focus.length === 0) {
-      newErrors.focus = 'Please select at least one focus';
-    }
-    if (formData.travelers < 1) {
-      newErrors.travelers = 'At least 1 traveler required';
+    if (!formData.budget || formData.budget <= 0) {
+      newErrors.budget = 'Please enter a valid budget greater than 0';
     }
 
     setErrors(newErrors);
@@ -97,187 +90,166 @@ export function InitialInputForm({ onSubmit }: InitialInputFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-xl mx-auto">
-      {/* Destination */}
+      {/* Destination (required) */}
       <div className="space-y-2">
-        <Label htmlFor="destination">Where do you want to go?</Label>
+        <Label htmlFor="destination">
+          Where do you want to go? <span className="text-red-500">*</span>
+        </Label>
         <Input
           id="destination"
-          placeholder="e.g., Tokyo, Japan"
-          value={formData.destinations[0] || ''}
+          placeholder="e.g., Japan, Italy, Thailand"
+          value={formData.destination}
           onChange={(e) =>
-            setFormData((prev) => ({ ...prev, destinations: [e.target.value] }))
+            setFormData((prev) => ({ ...prev, destination: e.target.value }))
           }
-          className={cn(errors.destinations && 'border-red-500')}
+          className={cn(errors.destination && 'border-red-500')}
+          disabled={isLoading}
         />
-        {errors.destinations && <p className="text-sm text-red-500">{errors.destinations}</p>}
+        {errors.destination && (
+          <p className="text-sm text-red-500">{errors.destination}</p>
+        )}
       </div>
+
+      {/* Destination Cities (optional) */}
+      <MultiTextInput
+        label="Specific cities to visit (optional)"
+        values={formData.destination_cities}
+        onChange={(cities) =>
+          setFormData((prev) => ({ ...prev, destination_cities: cities }))
+        }
+        placeholder="Add a city and press Enter"
+        description="e.g., Tokyo, Kyoto, Osaka"
+        maxItems={10}
+        disabled={isLoading}
+      />
 
       {/* Date Range */}
       <div className="grid grid-cols-2 gap-4">
+        <DatePickerField
+          label="Start Date"
+          value={formData.start_date}
+          onChange={(date) =>
+            setFormData((prev) => ({ ...prev, start_date: date }))
+          }
+          minDate={new Date()}
+          error={errors.start_date}
+          required
+          disabled={isLoading}
+        />
+        <DatePickerField
+          label="End Date"
+          value={formData.end_date}
+          onChange={(date) =>
+            setFormData((prev) => ({ ...prev, end_date: date }))
+          }
+          minDate={formData.start_date || new Date()}
+          error={errors.end_date}
+          required
+          disabled={isLoading}
+        />
+      </div>
+
+      {/* Budget and Currency */}
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Start Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !formData.startDate && 'text-muted-foreground',
-                  errors.startDate && 'border-red-500'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.startDate ? format(formData.startDate, 'PPP') : 'Pick a date'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={formData.startDate}
-                onSelect={(date) => setFormData((prev) => ({ ...prev, startDate: date }))}
-                disabled={(date) => date < new Date()}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          {errors.startDate && <p className="text-sm text-red-500">{errors.startDate}</p>}
+          <Label htmlFor="budget">
+            Budget <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="budget"
+            type="number"
+            min={1}
+            placeholder="e.g., 5000"
+            value={formData.budget}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                budget: e.target.value ? parseFloat(e.target.value) : '',
+              }))
+            }
+            className={cn(errors.budget && 'border-red-500')}
+            disabled={isLoading}
+          />
+          {errors.budget && (
+            <p className="text-sm text-red-500">{errors.budget}</p>
+          )}
         </div>
 
         <div className="space-y-2">
-          <Label>End Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !formData.endDate && 'text-muted-foreground',
-                  errors.endDate && 'border-red-500'
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.endDate ? format(formData.endDate, 'PPP') : 'Pick a date'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={formData.endDate}
-                onSelect={(date) => setFormData((prev) => ({ ...prev, endDate: date }))}
-                disabled={(date) => date < (formData.startDate || new Date())}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          {errors.endDate && <p className="text-sm text-red-500">{errors.endDate}</p>}
+          <Label>Currency</Label>
+          <Select
+            value={formData.currency}
+            onValueChange={(value) =>
+              setFormData((prev) => ({ ...prev, currency: value }))
+            }
+            disabled={isLoading}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Budget Category */}
+      {/* Travel Party */}
       <div className="space-y-2">
-        <Label>Budget</Label>
+        <Label>Travel Party</Label>
         <Select
-          value={formData.budgetCategory}
+          value={formData.travel_party}
           onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, budgetCategory: value as BudgetCategory }))
+            setFormData((prev) => ({ ...prev, travel_party: value }))
           }
+          disabled={isLoading}
         >
-          <SelectTrigger className={cn(errors.budgetCategory && 'border-red-500')}>
-            <SelectValue placeholder="Select your budget level" />
+          <SelectTrigger>
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {BUDGET_CATEGORIES.map((category) => (
-              <SelectItem key={category.value} value={category.value}>
-                <div className="flex flex-col">
-                  <span>{category.label}</span>
-                  <span className="text-xs text-muted-foreground">{category.description}</span>
-                </div>
+            {TRAVEL_PARTY_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {errors.budgetCategory && <p className="text-sm text-red-500">{errors.budgetCategory}</p>}
       </div>
 
-      {/* Trip Focus (Multi-select) */}
+      {/* Budget Scope */}
       <div className="space-y-2">
-        <Label>What&apos;s your focus? (Select all that apply)</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {TRIP_FOCUS_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={cn(
-                'flex items-center space-x-3 rounded-lg border p-3 cursor-pointer transition-colors',
-                formData.focus.includes(option.value as TripFocus)
-                  ? 'border-primary bg-primary/5'
-                  : 'hover:border-muted-foreground/50'
-              )}
-            >
-              <Checkbox
-                checked={formData.focus.includes(option.value as TripFocus)}
-                onCheckedChange={() => handleFocusToggle(option.value as TripFocus)}
-              />
-              <span className="text-sm font-medium">{option.label}</span>
-            </label>
-          ))}
-        </div>
-        {errors.focus && <p className="text-sm text-red-500">{errors.focus}</p>}
-      </div>
-
-      {/* Number of Travelers */}
-      <div className="space-y-2">
-        <Label htmlFor="travelers">How many travelers?</Label>
-        <Input
-          id="travelers"
-          type="number"
-          min={1}
-          max={20}
-          value={formData.travelers}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, travelers: parseInt(e.target.value) || 1 }))
+        <Label>Budget Scope</Label>
+        <Select
+          value={formData.budget_scope}
+          onValueChange={(value) =>
+            setFormData((prev) => ({ ...prev, budget_scope: value }))
           }
-          className={cn('w-32', errors.travelers && 'border-red-500')}
-        />
-        {errors.travelers && <p className="text-sm text-red-500">{errors.travelers}</p>}
-      </div>
-
-      {/* Can Drive */}
-      <div className="space-y-2">
-        <Label>Transportation</Label>
-        <label className="flex items-center space-x-3 rounded-lg border p-4 cursor-pointer hover:border-muted-foreground/50 transition-colors">
-          <Checkbox
-            checked={formData.canDrive}
-            onCheckedChange={(checked) =>
-              setFormData((prev) => ({ ...prev, canDrive: checked === true }))
-            }
-          />
-          <div className="flex items-center gap-2">
-            <Car className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <span className="text-sm font-medium">Can you drive?</span>
-              <p className="text-xs text-muted-foreground">
-                Check this if you&apos;re able to rent and drive a car during your trip
-              </p>
-            </div>
-          </div>
-        </label>
-      </div>
-
-      {/* Additional Notes */}
-      <div className="space-y-2">
-        <Label htmlFor="additionalNotes">Anything else we should know? (Optional)</Label>
-        <Textarea
-          id="additionalNotes"
-          placeholder="e.g., I'm celebrating my anniversary, prefer vegetarian restaurants, need wheelchair accessibility..."
-          value={formData.additionalNotes}
-          onChange={(e) => setFormData((prev) => ({ ...prev, additionalNotes: e.target.value }))}
-          rows={3}
-        />
+          disabled={isLoading}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {BUDGET_SCOPE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          How should we interpret your budget?
+        </p>
       </div>
 
       {/* Submit Button */}
-      <Button type="submit" size="lg" className="w-full">
-        Continue
+      <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
+        {isLoading ? 'Starting...' : 'Start Planning'}
       </Button>
     </form>
   );
