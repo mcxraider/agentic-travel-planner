@@ -11,7 +11,7 @@ Transform the travel planner frontend into a "plug and play" architecture where 
 |---------|----------|--------|--------|
 | Monolithic page component | `src/app/plan/page.tsx` (753 lines) | Hard to maintain, untestable | ⬜ Open |
 | Monolithic itinerary page | `src/app/itinerary/[id]/page.tsx` (503 lines) | Same issues as plan page | ⬜ Open |
-| Prop drilling | TimelineView (14 props) → DayCard (12 props) → EventCard (13 props) | Components tightly coupled | ⬜ Open |
+| Prop drilling | ~~TimelineView (14 props) → DayCard (12 props) → EventCard (13 props)~~ | ~~Components tightly coupled~~ | ✅ Fixed |
 | Store coupling (5 stores) | itinerary/[id]/page.tsx destructures 25+ methods from single store | Can't swap components easily | ⬜ Open |
 | Hardcoded configs | ~~EventCard type colors/icons (lines 56-78)~~ | ~~Not pluggable~~ | ✅ Fixed |
 | No custom hooks | Business logic embedded in page components | Not reusable, hard to test | ⬜ Open |
@@ -21,14 +21,14 @@ Transform the travel planner frontend into a "plug and play" architecture where 
 
 ## Implementation Status
 
-> Last updated: 2026-02-01 (Phase 2 complete)
+> Last updated: 2026-02-01 (Phase 4 complete)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1: Foundation | ✅ Complete | Config files, type consolidation, API adapters |
 | Phase 2: Hooks Extraction | ✅ Complete | Custom hooks for business logic |
-| Phase 3: Context Architecture | ⬜ Not Started | ItineraryContext, prop drilling elimination |
-| Phase 4: Compound Components | ⬜ Not Started | EventCard refactor |
+| Phase 3: Context Architecture | ✅ Complete | ItineraryContext, prop drilling elimination |
+| Phase 4: Compound Components | ✅ Complete | EventCard compound component pattern |
 
 ### Phase 1 Completed Items
 - ✅ **Event Type Registry** (`/src/config/event-types.ts`) - Extracted hardcoded colors/icons from EventCard.tsx
@@ -66,10 +66,53 @@ Transform the travel planner frontend into a "plug and play" architecture where 
 - `use-day-planning.ts` - Day planning phase with request deduplication (new)
 - `use-planning-wizard.ts` - Multi-step wizard state machine (new)
 
+### Phase 3 Completed Items
+- ✅ **ItineraryContext** (`/src/contexts/itinerary-context.tsx`) - Created context provider and hooks
+  - `ItineraryProvider` wraps component tree to provide state and actions
+  - `useItinerary()` hook for required context access (throws if not in provider)
+  - `useItineraryContext()` hook for optional context access (returns null if not in provider)
+  - Provides: itinerary, selectedEventIds, eventConflicts, visualSelections, warnings, hasUnsavedChanges, canUndo
+  - Actions: selectEvent, deleteEvent, moveEvent, openAddEvent, openAddAlternative, cycleAlternative, dismissConflict, dismissWarning, onDragStart
+- ✅ **TimelineView refactored** - Now uses context with prop fallbacks
+  - All 14 props are now optional when using ItineraryProvider
+  - Maintains backward compatibility with prop-based usage
+- ✅ **DayCard refactored** - Now uses context with prop fallbacks
+  - Only `day` prop remains required (unique per card)
+  - 11 other props are optional when using ItineraryProvider
+- ✅ **EventCard refactored** - Now uses context with prop fallbacks
+  - Only `event`, `dayNumber`, and `alternatives` props remain required
+  - Other props derived from context when available
+- ✅ **Itinerary page updated** - Uses ItineraryProvider and useItineraryEdit hook
+  - Reduced from 503 lines to ~180 lines
+  - TimelineView now rendered with no props inside ItineraryProvider
+
+### Phase 4 Completed Items
+- ✅ **EventCard Compound Component** (`/src/components/itinerary/EventCard/`) - Refactored monolithic EventCard to compound pattern
+  - `EventCardContext.tsx` - Context provider sharing state and handlers to sub-components
+  - `EventCardRoot.tsx` - Container with drag-drop support and stacked card rendering
+  - `EventCardDragHandle.tsx` - Extracted drag handle with sortable listeners
+  - `EventCardContent.tsx` - Content components (Time, Details, ConflictBadge, StackIndicator)
+  - `EventCardActions.tsx` - Action buttons (CycleButton, AddAlternativeButton, DeleteButton, DismissConflict)
+  - `index.tsx` - Exports both compound API and legacy wrapper for backward compatibility
+- ✅ **Legacy API Preserved** - `EventCard` component still accepts all original props
+- ✅ **Compound API Available** - New composable usage pattern:
+  ```tsx
+  <EventCard.Provider event={event} dayNumber={1}>
+    <EventCard.Root>
+      <EventCard.ConflictBadge />
+      <EventCard.StackIndicator />
+      <EventCard.DragHandle />
+      <EventCard.Content />
+      <EventCard.Actions />
+    </EventCard.Root>
+  </EventCard.Provider>
+  ```
+
 ### Directories
 - `/src/config/` - ✅ Created (contains event-types.ts, index.ts)
 - `/src/lib/api/adapters/` - ✅ Created (contains base.ts, index.ts)
-- `/src/contexts/` - Does not exist
+- `/src/contexts/` - ✅ Created (contains itinerary-context.tsx, index.ts)
+- `/src/components/itinerary/EventCard/` - ✅ Created (compound component folder)
 
 ---
 
@@ -212,16 +255,24 @@ Split EventCard (13 props) into composable parts:
    - Extracted from DayCard.tsx useMemo block
    - DayCard.tsx now uses this hook
 
-### Phase 3: Context Architecture (Eliminate Prop Drilling)
-9. Create `ItineraryContext` with provider and hook
-10. Refactor TimelineView to use context (remove 14 props)
-11. Refactor DayCard to use context (remove 12 props)
-12. Refactor EventCard to use context (remove 13 props)
+### Phase 3: Context Architecture (Eliminate Prop Drilling) ✅ COMPLETE
+9. ✅ **DONE** Create `ItineraryContext` with provider and hook
+   - Created ItineraryProvider and useItinerary/useItineraryContext hooks
+   - Provides state and actions to component tree
+10. ✅ **DONE** Refactor TimelineView to use context (remove 14 props)
+    - All props now optional with context fallbacks
+11. ✅ **DONE** Refactor DayCard to use context (remove 12 props)
+    - Only `day` prop required, others from context
+12. ✅ **DONE** Refactor EventCard to use context (remove 13 props)
+    - Only `event`, `dayNumber`, `alternatives` required, others from context
 
-### Phase 4: Compound Components
-13. Refactor EventCard to compound component pattern
-14. Add legacy wrapper for backward compatibility
-15. Create configuration-driven ClarificationSummary
+### Phase 4: Compound Components ✅ COMPLETE
+13. ✅ **DONE** Refactor EventCard to compound component pattern
+    - Created EventCardContext, EventCardRoot, EventCardDragHandle, EventCardContent, EventCardActions
+    - Sub-components: Time, Details, ConflictBadge, StackIndicator, CycleButton, AddAlternativeButton, DeleteButton, DismissConflict
+14. ✅ **DONE** Add legacy wrapper for backward compatibility
+    - `EventCard` function wraps compound components, accepts all original props
+15. ⬜ Create configuration-driven ClarificationSummary (future enhancement)
 
 ---
 
@@ -230,10 +281,10 @@ Split EventCard (13 props) into composable parts:
 | File | Changes | Status |
 |------|---------|--------|
 | `src/app/plan/page.tsx` | Extract to usePlanningWizard hook, reduce from 753 to ~200 lines | ⬜ Pending |
-| `src/app/itinerary/[id]/page.tsx` | Wrap with ItineraryProvider, use useItineraryEdit | ⬜ Pending |
-| `src/components/itinerary/TimelineView.tsx` | Remove 14 props, use useItinerary(); ~~update EventConflictMap import~~ | 🟡 Partial (import updated) |
-| `src/components/itinerary/DayCard.tsx` | Remove 12 props, use useItinerary(); ~~update EventConflictMap import~~; ~~extract grouping logic~~ | 🟡 Partial (import updated, useEventAlternatives hook used) |
-| `src/components/itinerary/EventCard.tsx` | Remove 13 props, convert to compound component, ~~extract colors~~ | 🟡 Partial (colors extracted) |
+| `src/app/itinerary/[id]/page.tsx` | ~~Wrap with ItineraryProvider, use useItineraryEdit~~ | ✅ Done |
+| `src/components/itinerary/TimelineView.tsx` | ~~Remove 14 props, use useItinerary()~~; ~~update EventConflictMap import~~ | ✅ Done |
+| `src/components/itinerary/DayCard.tsx` | ~~Remove 12 props, use useItinerary()~~; ~~update EventConflictMap import~~; ~~extract grouping logic~~ | ✅ Done |
+| `src/components/itinerary/EventCard/` | ~~Remove 13 props~~, ~~convert to compound component (Phase 4)~~, ~~extract colors~~ | ✅ Done |
 | `src/components/itinerary/EditChatSidebar.tsx` | ~~Import ChatMessage from types (remove duplicate)~~ | ✅ Done |
 | `src/store/itinerary-store.ts` | ~~Import EventConflictMap from types instead of defining locally~~ | ✅ Done |
 | `src/lib/api/clarification.ts` | ~~Refactor to use base adapter, consolidate error handling~~ | ✅ Done |
@@ -249,10 +300,10 @@ src/
 │   ├── event-types.ts           # ✅ CREATED - Pluggable event icons/colors
 │   ├── clarification-fields.ts # Field category config (future)
 │   └── wizard-steps.ts         # Step definitions (future)
-├── contexts/
-│   ├── index.ts
-│   ├── itinerary-context.tsx   # Itinerary state + actions
-│   └── planning-context.tsx    # Planning wizard state
+├── contexts/                    # ✅ CREATED
+│   ├── index.ts                 # ✅ CREATED - Barrel exports
+│   ├── itinerary-context.tsx    # ✅ CREATED - Itinerary state + actions
+│   └── planning-context.tsx     # Future - Planning wizard state
 ├── hooks/
 │   ├── index.ts                 # ✅ UPDATED - Exports all hooks
 │   ├── use-chat.ts              # Existing
@@ -269,12 +320,13 @@ src/
 ├── types/
 │   └── itinerary.ts            # ✅ UPDATED - Added EventConflictMap
 └── components/itinerary/
-    └── EventCard/
-        ├── index.tsx           # Compound component exports
-        ├── EventCardContext.tsx
-        ├── EventCardRoot.tsx
-        ├── EventCardContent.tsx
-        └── EventCardActions.tsx
+    └── EventCard/              # ✅ CREATED - Compound component folder
+        ├── index.tsx           # ✅ CREATED - Compound + legacy exports
+        ├── EventCardContext.tsx # ✅ CREATED - Shared context for sub-components
+        ├── EventCardRoot.tsx   # ✅ CREATED - Container with drag-drop
+        ├── EventCardDragHandle.tsx # ✅ CREATED - Drag handle component
+        ├── EventCardContent.tsx # ✅ CREATED - Time, Details, badges
+        └── EventCardActions.tsx # ✅ CREATED - Action buttons
 ```
 
 ---

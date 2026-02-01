@@ -7,6 +7,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { Day, Event, DayWarning, EventConflictMap } from '@/types';
+import { useItineraryContext } from '@/contexts';
 import { cn } from '@/lib/utils';
 import { EventCard } from './EventCard';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -26,12 +27,14 @@ import {
 import { useEventAlternatives } from '@/hooks';
 
 interface DayCardProps {
+  // Required: the day data to display
   day: Day;
-  selectedEventIds: string[];
+  // Optional props - can be provided via context instead
+  selectedEventIds?: string[];
   visualSelections?: Record<string, string>;
-  onSelectEvent: (eventId: string, multiSelect: boolean) => void;
-  onDeleteEvent: (dayNumber: number, eventId: string) => void;
-  onAddEvent: (dayNumber: number) => void;
+  onSelectEvent?: (eventId: string, multiSelect: boolean) => void;
+  onDeleteEvent?: (dayNumber: number, eventId: string) => void;
+  onAddEvent?: (dayNumber: number) => void;
   onAddAlternative?: (dayNumber: number, event: Event) => void;
   onVisualSelectionChange?: (groupId: string, eventId: string) => void;
   warnings?: DayWarning[];
@@ -53,22 +56,61 @@ const energyLevelLabels: Record<Day['summary']['energy_level'], string> = {
   strenuous: 'Strenuous',
 };
 
+/**
+ * DayCard component that displays a single day's events.
+ *
+ * Supports two usage patterns:
+ * 1. Context-based (recommended): Wrap with ItineraryProvider, only pass `day` prop
+ * 2. Prop-based (legacy): Pass all required props directly
+ *
+ * @example Context-based usage:
+ * <DayCard day={day} />
+ *
+ * @example Prop-based usage (backward compatible):
+ * <DayCard
+ *   day={day}
+ *   selectedEventIds={selectedEventIds}
+ *   onSelectEvent={handleSelectEvent}
+ *   // ... other props
+ * />
+ */
 export function DayCard({
   day,
-  selectedEventIds,
-  visualSelections = {},
-  onSelectEvent,
-  onDeleteEvent,
-  onAddEvent,
-  onAddAlternative,
-  onVisualSelectionChange,
-  warnings = [],
-  onDismissWarning,
-  eventConflicts = {},
-  onDismissConflict,
+  selectedEventIds: propSelectedEventIds,
+  visualSelections: propVisualSelections = {},
+  onSelectEvent: propOnSelectEvent,
+  onDeleteEvent: propOnDeleteEvent,
+  onAddEvent: propOnAddEvent,
+  onAddAlternative: propOnAddAlternative,
+  onVisualSelectionChange: propOnVisualSelectionChange,
+  warnings: propWarnings = [],
+  onDismissWarning: propOnDismissWarning,
+  eventConflicts: propEventConflicts = {},
+  onDismissConflict: propOnDismissConflict,
   isOver = false,
 }: DayCardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Try to get values from context, fall back to props
+  const context = useItineraryContext();
+
+  // Resolve values: context takes precedence, then props
+  const selectedEventIds = context?.selectedEventIds ?? propSelectedEventIds ?? [];
+  const visualSelections = context?.visualSelections ?? propVisualSelections;
+  const eventConflicts = context?.eventConflicts ?? propEventConflicts;
+
+  // Filter warnings for this day from context if available
+  const contextWarnings = context?.warnings?.filter((w) => w.dayNumber === day.day_number);
+  const warnings = contextWarnings ?? propWarnings;
+
+  // Resolve callbacks: context takes precedence, then props
+  const onSelectEvent = context?.selectEvent ?? propOnSelectEvent;
+  const onDeleteEvent = context?.deleteEvent ?? propOnDeleteEvent;
+  const onAddEvent = context?.openAddEvent ?? propOnAddEvent;
+  const onAddAlternative = context?.openAddAlternative ?? propOnAddAlternative;
+  const onVisualSelectionChange = context?.cycleAlternative ?? propOnVisualSelectionChange;
+  const onDismissWarning = context?.dismissWarning ?? propOnDismissWarning;
+  const onDismissConflict = context?.dismissConflict ?? propOnDismissConflict;
 
   const { setNodeRef, isOver: isDroppableOver } = useDroppable({
     id: `day-${day.day_number}`,
@@ -220,7 +262,7 @@ export function DayCard({
             variant="outline"
             size="sm"
             className="w-full mt-3 border-dashed text-gray-500 hover:text-gray-700"
-            onClick={() => onAddEvent(day.day_number)}
+            onClick={() => onAddEvent?.(day.day_number)}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Event
