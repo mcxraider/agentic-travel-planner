@@ -11,17 +11,13 @@ import {
   MapPin,
   Clock,
   DollarSign,
-  Utensils,
-  Car,
-  Bed,
-  Briefcase,
-  Activity,
   Plus,
   AlertTriangle,
   X,
   Layers,
   ArrowLeftRight,
 } from 'lucide-react';
+import { getEventTypeConfig } from '@/config';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -53,30 +49,7 @@ interface EventCardProps {
   onDismissConflict?: (eventId: string) => void;
 }
 
-const eventTypeIcons: Record<Event['type'], React.ReactNode> = {
-  logistics: <Briefcase className="h-4 w-4" />,
-  activity: <Activity className="h-4 w-4" />,
-  dining: <Utensils className="h-4 w-4" />,
-  transit: <Car className="h-4 w-4" />,
-  rest: <Bed className="h-4 w-4" />,
-};
-
-const eventTypeColors: Record<Event['type'], string> = {
-  logistics: 'bg-slate-100 border-slate-300 text-slate-700',
-  activity: 'bg-emerald-50 border-emerald-300 text-emerald-700',
-  dining: 'bg-amber-50 border-amber-300 text-amber-700',
-  transit: 'bg-blue-50 border-blue-300 text-blue-700',
-  rest: 'bg-purple-50 border-purple-300 text-purple-700',
-};
-
-// Lighter versions for stacked cards behind
-const eventTypeColorsLight: Record<Event['type'], string> = {
-  logistics: 'bg-slate-50 border-slate-200',
-  activity: 'bg-emerald-50/50 border-emerald-200',
-  dining: 'bg-amber-50/50 border-amber-200',
-  transit: 'bg-blue-50/50 border-blue-200',
-  rest: 'bg-purple-50/50 border-purple-200',
-};
+// Event type styling is now provided by @/config/event-types registry
 
 export function EventCard({
   event,
@@ -170,6 +143,8 @@ export function EventCard({
   // Render a single card (used for both the main card and stacked background cards)
   const renderCard = (cardEvent: Event, isMain: boolean, stackIndex: number = 0) => {
     const offset = stackIndex * 6; // 6px offset per card
+    const typeConfig = getEventTypeConfig(cardEvent.type);
+    const TypeIcon = typeConfig.icon;
 
     return (
       <div
@@ -179,8 +154,8 @@ export function EventCard({
           isMain
             ? hasConflict
               ? 'bg-red-50 border-red-400 text-red-900'
-              : eventTypeColors[cardEvent.type]
-            : eventTypeColorsLight[cardEvent.type],
+              : typeConfig.colorClass
+            : typeConfig.colorClassLight,
           isMain && isSelected && 'ring-2 ring-blue-500 ring-offset-2',
           isMain && (isDragging || isSortableDragging) && 'opacity-50 shadow-lg scale-105',
           isMain ? 'z-[3] hover:shadow-md' : stackIndex === 1 ? 'z-[2]' : 'z-[1]'
@@ -237,7 +212,7 @@ export function EventCard({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="flex-shrink-0">{eventTypeIcons[cardEvent.type]}</span>
+                <span className="flex-shrink-0"><TypeIcon className="h-4 w-4" /></span>
                 <h4 className="font-medium text-sm truncate">{cardEvent.title}</h4>
               </div>
 
@@ -390,11 +365,14 @@ export function EventCard({
 
 // Drag overlay version (shown when dragging)
 export function EventCardDragOverlay({ event }: { event: Event }) {
+  const typeConfig = getEventTypeConfig(event.type);
+  const TypeIcon = typeConfig.icon;
+
   return (
     <div
       className={cn(
         'flex items-start gap-3 p-3 rounded-lg border-2 shadow-xl',
-        eventTypeColors[event.type],
+        typeConfig.colorClass,
         'ring-2 ring-blue-500'
       )}
     >
@@ -411,7 +389,7 @@ export function EventCardDragOverlay({ event }: { event: Event }) {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="flex-shrink-0">{eventTypeIcons[event.type]}</span>
+          <span className="flex-shrink-0"><TypeIcon className="h-4 w-4" /></span>
           <h4 className="font-medium text-sm truncate">{event.title}</h4>
         </div>
       </div>

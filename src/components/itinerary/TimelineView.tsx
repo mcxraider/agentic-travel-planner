@@ -1,7 +1,6 @@
 'use client';
 
-import { Itinerary, Event, DayWarning } from '@/types';
-import { EventConflictMap } from '@/store/itinerary-store';
+import { Itinerary, Event, DayWarning, EventConflictMap } from '@/types';
 import { DragDropContext } from './DragDropContext';
 import { DayCard } from './DayCard';
 

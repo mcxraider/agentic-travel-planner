@@ -7,37 +7,69 @@ Transform the travel planner frontend into a "plug and play" architecture where 
 
 ## Current Problems Identified
 
-| Problem | Location | Impact |
-|---------|----------|--------|
-| Monolithic page component | `src/app/plan/page.tsx` (753 lines) | Hard to maintain, untestable |
-| Monolithic itinerary page | `src/app/itinerary/[id]/page.tsx` (503 lines) | Same issues as plan page |
-| Prop drilling | TimelineView (14 props) → DayCard (12 props) → EventCard (13 props) | Components tightly coupled |
-| Store coupling (5 stores) | itinerary/[id]/page.tsx destructures 25+ methods from single store | Can't swap components easily |
-| Hardcoded configs | EventCard type colors/icons (lines 56-78) | Not pluggable |
-| No custom hooks | Business logic embedded in page components | Not reusable, hard to test |
-| Duplicate types | EditChatSidebar defines local ChatMessage (line 28) vs types/chat.ts | Inconsistent, maintenance burden |
+| Problem | Location | Impact | Status |
+|---------|----------|--------|--------|
+| Monolithic page component | `src/app/plan/page.tsx` (753 lines) | Hard to maintain, untestable | ⬜ Open |
+| Monolithic itinerary page | `src/app/itinerary/[id]/page.tsx` (503 lines) | Same issues as plan page | ⬜ Open |
+| Prop drilling | TimelineView (14 props) → DayCard (12 props) → EventCard (13 props) | Components tightly coupled | ⬜ Open |
+| Store coupling (5 stores) | itinerary/[id]/page.tsx destructures 25+ methods from single store | Can't swap components easily | ⬜ Open |
+| Hardcoded configs | ~~EventCard type colors/icons (lines 56-78)~~ | ~~Not pluggable~~ | ✅ Fixed |
+| No custom hooks | Business logic embedded in page components | Not reusable, hard to test | ⬜ Open |
+| Duplicate types | ~~EditChatSidebar defines local ChatMessage (line 28) vs types/chat.ts~~ | ~~Inconsistent, maintenance burden~~ | ✅ Fixed |
 
 ---
 
 ## Implementation Status
 
-> Last reviewed: 2026-02-01
+> Last updated: 2026-02-01 (Phase 2 complete)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 1: Foundation | ⬜ Not Started | Config files, type consolidation |
-| Phase 2: Hooks Extraction | ⬜ Not Started | Custom hooks for business logic |
+| Phase 1: Foundation | ✅ Complete | Config files, type consolidation, API adapters |
+| Phase 2: Hooks Extraction | ✅ Complete | Custom hooks for business logic |
 | Phase 3: Context Architecture | ⬜ Not Started | ItineraryContext, prop drilling elimination |
 | Phase 4: Compound Components | ⬜ Not Started | EventCard refactor |
+
+### Phase 1 Completed Items
+- ✅ **Event Type Registry** (`/src/config/event-types.ts`) - Extracted hardcoded colors/icons from EventCard.tsx
+- ✅ **ChatMessage Type Consolidation** - EditChatSidebar.tsx now imports from `@/types/chat`
+- ✅ **API Adapter Base** (`/src/lib/api/adapters/base.ts`) - Generic ApiError class and fetchWithErrorHandling utility
+  - Refactored `clarification.ts` to use the base adapter
+  - ClarificationApiError now extends ApiError
+- ✅ **EventConflictMap Type Consolidation** - Moved from `store/itinerary-store.ts` to `@/types/itinerary`
+  - Updated TimelineView.tsx, DayCard.tsx to import from `@/types`
+  - Re-exported from `@/store` for backward compatibility
+
+### Phase 2 Completed Items
+- ✅ **useEventAlternatives** (`/src/hooks/use-event-alternatives.ts`) - Extracted event grouping logic from DayCard.tsx
+  - Groups events by alternativeGroupId
+  - Identifies primary events and builds alternatives map
+  - Used by DayCard.tsx
+- ✅ **useItineraryEdit** (`/src/hooks/use-itinerary-edit.ts`) - Extracted event manipulation logic from itinerary/[id]/page.tsx
+  - Handles event selection, deletion, movement, and addition
+  - Manages alternatives, validation, conflict detection, optimization
+  - Provides undo functionality
+- ✅ **useDayPlanning** (`/src/hooks/use-day-planning.ts`) - Extracted day planning phase logic from plan/page.tsx
+  - Request deduplication for day options fetching
+  - Manages currentDay, totalDays, lockedDays, currentOptions
+  - Handles option selection and itinerary building
+- ✅ **usePlanningWizard** (`/src/hooks/use-planning-wizard.ts`) - Extracted wizard state machine from plan/page.tsx
+  - Manages step transitions (input → clarification → planning → review)
+  - Handles form submission and clarification
+  - Exports step constants (STEP_INPUT, STEP_CLARIFICATION, STEP_PLANNING, STEP_REVIEW)
 
 ### Current Hooks
 - `use-chat.ts` - Chat functionality (exists)
 - `use-toast.ts` - Toast notifications (exists)
+- `use-event-alternatives.ts` - Event grouping by alternativeGroupId (new)
+- `use-itinerary-edit.ts` - Itinerary editing logic (new)
+- `use-day-planning.ts` - Day planning phase with request deduplication (new)
+- `use-planning-wizard.ts` - Multi-step wizard state machine (new)
 
-### Directories Not Yet Created
+### Directories
+- `/src/config/` - ✅ Created (contains event-types.ts, index.ts)
+- `/src/lib/api/adapters/` - ✅ Created (contains base.ts, index.ts)
 - `/src/contexts/` - Does not exist
-- `/src/config/` - Does not exist
-- `/src/lib/api/adapters/` - Does not exist (but `/src/lib/api/` exists with clarification.ts)
 
 ---
 
@@ -149,19 +181,36 @@ Split EventCard (13 props) into composable parts:
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Low Risk)
-1. Create `/src/lib/api/adapters/base.ts` - Error handling wrapper
-2. Create `/src/config/event-types.ts` - Extract hardcoded colors/icons from `EventCard.tsx:56-78`
-3. Move `EventConflictMap` type from `store/itinerary-store.ts:5` to `/src/types/itinerary.ts` (add to existing file)
-4. Remove duplicate `ChatMessage` from `EditChatSidebar.tsx:28-32` - import from `@/types/chat` instead
+### Phase 1: Foundation (Low Risk) ✅ COMPLETE
+1. ✅ **DONE** Create `/src/lib/api/adapters/base.ts` - Error handling wrapper
+   - Created generic `ApiError` class with helper methods (isStatus, isClientError, isServerError)
+   - Created `fetchWithErrorHandling<T>()` utility for standardized fetch with error handling
+   - Created `createFetchAdapter()` factory for domain-specific adapters
+   - Refactored `clarification.ts` to use new adapter, reducing code duplication
+2. ✅ **DONE** Create `/src/config/event-types.ts` - Extract hardcoded colors/icons from `EventCard.tsx:56-78`
+   - Created registry with `getEventTypeConfig()`, `registerEventType()` for plug-and-play extensibility
+   - EventCard.tsx now imports from `@/config` instead of hardcoded maps
+3. ✅ **DONE** Move `EventConflictMap` type from `store/itinerary-store.ts:5` to `/src/types/itinerary.ts`
+   - Added type definition with JSDoc to `@/types/itinerary`
+   - Updated TimelineView.tsx, DayCard.tsx to import from `@/types`
+   - Maintained backward compatibility via re-export from `@/store`
+4. ✅ **DONE** Remove duplicate `ChatMessage` from `EditChatSidebar.tsx:28-32` - import from `@/types/chat` instead
    - Note: `types/chat.ts` version is a superset (has `timestamp`, `type`, `options`, `metadata`)
-   - EditChatSidebar only uses `id`, `role`, `content` - compatible with the shared type
+   - EditChatSidebar now imports from `@/types` and includes required `timestamp` field
 
-### Phase 2: Hooks Extraction (High Impact)
-5. Create `useItineraryEdit` hook from itinerary page logic
-6. Create `usePlanningWizard` hook from plan page (state machine)
-7. Create `useDayPlanning` hook (request deduplication)
-8. Create `useEventAlternatives` hook (grouping logic)
+### Phase 2: Hooks Extraction (High Impact) ✅ COMPLETE
+5. ✅ **DONE** Create `useItineraryEdit` hook from itinerary page logic
+   - Extracted event handlers, validation, conflict management, optimization
+   - Ready for use in itinerary/[id]/page.tsx refactor
+6. ✅ **DONE** Create `usePlanningWizard` hook from plan page (state machine)
+   - Extracted step management, form submission, clarification handling
+   - Exports step constants for type-safe step management
+7. ✅ **DONE** Create `useDayPlanning` hook (request deduplication)
+   - Extracted day options fetching with refs for deduplication
+   - Manages planning phase state
+8. ✅ **DONE** Create `useEventAlternatives` hook (grouping logic)
+   - Extracted from DayCard.tsx useMemo block
+   - DayCard.tsx now uses this hook
 
 ### Phase 3: Context Architecture (Eliminate Prop Drilling)
 9. Create `ItineraryContext` with provider and hook
@@ -178,16 +227,16 @@ Split EventCard (13 props) into composable parts:
 
 ## Critical Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/app/plan/page.tsx` | Extract to usePlanningWizard hook, reduce from 753 to ~200 lines |
-| `src/app/itinerary/[id]/page.tsx` | Wrap with ItineraryProvider, use useItineraryEdit |
-| `src/components/itinerary/TimelineView.tsx` | Remove 14 props, use useItinerary() |
-| `src/components/itinerary/DayCard.tsx` | Remove 12 props, use useItinerary() |
-| `src/components/itinerary/EventCard.tsx` | Remove 13 props, convert to compound component, extract colors |
-| `src/components/itinerary/EditChatSidebar.tsx` | Import ChatMessage from types (remove duplicate) |
-| `src/store/itinerary-store.ts` | Import EventConflictMap from types instead of defining locally |
-| `src/lib/api/clarification.ts` | Refactor to use base adapter, consolidate error handling |
+| File | Changes | Status |
+|------|---------|--------|
+| `src/app/plan/page.tsx` | Extract to usePlanningWizard hook, reduce from 753 to ~200 lines | ⬜ Pending |
+| `src/app/itinerary/[id]/page.tsx` | Wrap with ItineraryProvider, use useItineraryEdit | ⬜ Pending |
+| `src/components/itinerary/TimelineView.tsx` | Remove 14 props, use useItinerary(); ~~update EventConflictMap import~~ | 🟡 Partial (import updated) |
+| `src/components/itinerary/DayCard.tsx` | Remove 12 props, use useItinerary(); ~~update EventConflictMap import~~; ~~extract grouping logic~~ | 🟡 Partial (import updated, useEventAlternatives hook used) |
+| `src/components/itinerary/EventCard.tsx` | Remove 13 props, convert to compound component, ~~extract colors~~ | 🟡 Partial (colors extracted) |
+| `src/components/itinerary/EditChatSidebar.tsx` | ~~Import ChatMessage from types (remove duplicate)~~ | ✅ Done |
+| `src/store/itinerary-store.ts` | ~~Import EventConflictMap from types instead of defining locally~~ | ✅ Done |
+| `src/lib/api/clarification.ts` | ~~Refactor to use base adapter, consolidate error handling~~ | ✅ Done |
 
 ---
 
@@ -195,25 +244,30 @@ Split EventCard (13 props) into composable parts:
 
 ```
 src/
-├── config/
-│   ├── event-types.ts          # Pluggable event icons/colors
-│   ├── clarification-fields.ts # Field category config
-│   └── wizard-steps.ts         # Step definitions
+├── config/                      # ✅ CREATED
+│   ├── index.ts                 # ✅ CREATED - Barrel exports
+│   ├── event-types.ts           # ✅ CREATED - Pluggable event icons/colors
+│   ├── clarification-fields.ts # Field category config (future)
+│   └── wizard-steps.ts         # Step definitions (future)
 ├── contexts/
 │   ├── index.ts
 │   ├── itinerary-context.tsx   # Itinerary state + actions
 │   └── planning-context.tsx    # Planning wizard state
 ├── hooks/
-│   ├── use-planning-wizard.ts
-│   ├── use-itinerary-edit.ts
-│   ├── use-day-planning.ts
-│   └── use-event-alternatives.ts
-├── lib/api/adapters/
-│   ├── base.ts                 # fetchWithErrorHandling
-│   ├── chat-adapter.ts
-│   └── itinerary-adapter.ts
+│   ├── index.ts                 # ✅ UPDATED - Exports all hooks
+│   ├── use-chat.ts              # Existing
+│   ├── use-toast.ts             # Existing
+│   ├── use-planning-wizard.ts   # ✅ CREATED - Wizard state machine
+│   ├── use-itinerary-edit.ts    # ✅ CREATED - Event manipulation
+│   ├── use-day-planning.ts      # ✅ CREATED - Day options with deduplication
+│   └── use-event-alternatives.ts # ✅ CREATED - Event grouping
+├── lib/api/adapters/            # ✅ CREATED
+│   ├── index.ts                 # ✅ CREATED - Barrel exports
+│   ├── base.ts                  # ✅ CREATED - ApiError, fetchWithErrorHandling, createFetchAdapter
+│   ├── chat-adapter.ts         # Future - chat API calls
+│   └── itinerary-adapter.ts    # Future - itinerary validation/optimization
 ├── types/
-│   └── itinerary.ts            # Add EventConflictMap, VisualSelections (existing file)
+│   └── itinerary.ts            # ✅ UPDATED - Added EventConflictMap
 └── components/itinerary/
     └── EventCard/
         ├── index.tsx           # Compound component exports

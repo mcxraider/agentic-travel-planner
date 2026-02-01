@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { Itinerary, Day, Event, DayWarning } from '@/types';
+import { Itinerary, Day, Event, DayWarning, EventConflictMap } from '@/types';
 
-// Maps eventId to conflict message
-export type EventConflictMap = Record<string, string>;
+// EventConflictMap is now imported from @/types/itinerary
 
 interface ItineraryState {
   itinerary: Itinerary | null;

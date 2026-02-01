@@ -1,13 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Day, Event, DayWarning } from '@/types';
-import { EventConflictMap } from '@/store/itinerary-store';
+import { Day, Event, DayWarning, EventConflictMap } from '@/types';
 import { cn } from '@/lib/utils';
 import { EventCard } from './EventCard';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
@@ -24,6 +23,7 @@ import {
   AlertTriangle,
   X,
 } from 'lucide-react';
+import { useEventAlternatives } from '@/hooks';
 
 interface DayCardProps {
   day: Day;
@@ -78,41 +78,8 @@ export function DayCard({
     },
   });
 
-  // Group events by alternativeGroupId
-  // Only show primary events (or first if no primary) in the main list
-  const { primaryEvents, alternativesMap } = useMemo(() => {
-    const groups = new Map<string, Event[]>();
-    const standaloneEvents: Event[] = [];
-
-    // Group events by alternativeGroupId
-    day.events.forEach((event) => {
-      if (event.alternativeGroupId) {
-        const existing = groups.get(event.alternativeGroupId) || [];
-        groups.set(event.alternativeGroupId, [...existing, event]);
-      } else {
-        standaloneEvents.push(event);
-      }
-    });
-
-    // For each group, find the primary and alternatives
-    const primaryEvts: Event[] = [...standaloneEvents];
-    const altMap = new Map<string, Event[]>();
-
-    groups.forEach((events) => {
-      // Find primary (or first if no primary)
-      const primary = events.find((e) => e.isPrimaryAlternative !== false) || events[0];
-      const alternatives = events.filter((e) => e.id !== primary.id);
-      primaryEvts.push(primary);
-      if (alternatives.length > 0) {
-        altMap.set(primary.id, alternatives);
-      }
-    });
-
-    // Sort by time_start (with order as tiebreaker for same start time)
-    primaryEvts.sort((a, b) => a.time_start.localeCompare(b.time_start) || a.order - b.order);
-
-    return { primaryEvents: primaryEvts, alternativesMap: altMap };
-  }, [day.events]);
+  // Use the hook to group events by alternativeGroupId
+  const { primaryEvents, alternativesMap } = useEventAlternatives(day.events);
 
   const eventIds = primaryEvents.map((e) => e.id);
   const isHighlighted = isOver || isDroppableOver;
