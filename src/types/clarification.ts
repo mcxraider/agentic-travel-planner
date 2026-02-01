@@ -1,24 +1,79 @@
-// Clarification API types based on backend contract
+// Clarification API types based on backend contract v2
+
+/**
+ * Question types supported by the v2 API.
+ */
+export type QuestionType = 'single_select' | 'multi_select' | 'ranked' | 'text';
 
 /**
  * A single clarification question from the backend.
  */
-export interface ClarificationQuestion {
-  question_id: number;
+export interface Question {
+  id: string;
   field: string;
-  multi_select: boolean;
-  question_text: string;
+  type: QuestionType;
+  question: string;
   options: string[];
-  allow_custom_input: boolean;
+  allow_custom: boolean;
+  tier: 1 | 2 | 3 | 4;
+  min_selections?: number;
+  max_selections?: number;
 }
 
 /**
  * Progress/state info returned with questions.
  */
 export interface QuestionsState {
-  answered_fields: string[];
-  missing_fields: string[];
-  completeness_score: number; // 0-100
+  collected: string[];
+  missing_tier1: string[];
+  missing_tier2: string[];
+  score: number; // 0-100
+  conflicts_detected: string[];
+}
+
+/**
+ * All collected clarification data fields.
+ */
+export interface ClarificationData {
+  // User Profile
+  user_name?: string;
+  citizenship?: string;
+  health_limitations?: string | null;
+  work_obligations?: string | null;
+  dietary_restrictions?: string | null;
+  specific_interests?: string[] | null;
+
+  // Trip Basics
+  destination?: string;
+  destination_cities?: string[] | null;
+  start_date?: string;
+  end_date?: string;
+  budget?: number;
+  currency?: string;
+  travel_party?: string;
+  budget_scope?: string;
+
+  // Travel Style Preferences
+  pace_preference?: string;
+  accommodation_type?: string;
+  transport_preference?: string[] | null;
+
+  // Trip Planning
+  top_3_must_dos?: Record<string, string>; // {"1": "...", "2": "...", "3": "..."}
+  deal_breakers?: string[] | null;
+  time_constraints?: string | null;
+
+  // Special Needs (conditional fields)
+  accessibility_needs?: string | null;
+  child_friendly?: boolean | null;
+  pet_friendly?: boolean | null;
+
+  // Internal fields
+  _warnings?: string[];
+  _conflicts_resolved?: boolean;
+
+  // Allow additional fields
+  [key: string]: unknown;
 }
 
 /**
@@ -50,8 +105,9 @@ export interface StartSessionRequest {
 export interface StartSessionResponse {
   session_id: string;
   round: number;
-  questions: ClarificationQuestion[];
+  questions: Question[];
   state: QuestionsState;
+  data: ClarificationData;
 }
 
 /**
@@ -59,7 +115,7 @@ export interface StartSessionResponse {
  */
 export interface RespondRequest {
   session_id: string;
-  responses: Record<string, unknown>; // field -> value (string | string[])
+  responses: Record<string, unknown>; // field -> value (string | string[] | ranked object)
 }
 
 /**
@@ -68,14 +124,10 @@ export interface RespondRequest {
 export interface RespondResponse {
   session_id: string;
   complete: boolean;
-
-  // Present when complete = false
-  round?: number;
-  questions?: ClarificationQuestion[];
-  state?: QuestionsState;
-
-  // Present when complete = true
-  collected_data?: Record<string, unknown>;
+  round: number;
+  questions: Question[];
+  state: QuestionsState;
+  data: ClarificationData;
 }
 
 /**
@@ -96,9 +148,12 @@ export interface ClarificationState {
   status: 'idle' | 'in_progress' | 'complete';
   sessionId: string | null;
   currentRound: number;
-  questions: ClarificationQuestion[];
-  answers: Record<string, string | string[]>; // field -> selected value(s)
-  completenessScore: number;
-  collectedData: Record<string, unknown> | null;
+  questions: Question[];
+  answers: Record<string, unknown>; // field -> selected value(s) or ranked object
+  questionsState: QuestionsState | null;
+  data: ClarificationData | null;
   error: string | null;
 }
+
+// Legacy type alias for backwards compatibility during migration
+export type ClarificationQuestion = Question;
