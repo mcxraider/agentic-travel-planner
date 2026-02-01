@@ -15,6 +15,7 @@ import {
   CompletenessProgress,
   ClarificationSummary,
   ApiError,
+  ConflictWarningBanner,
 } from '@/components/clarification';
 import {
   useTripStore,
@@ -61,18 +62,22 @@ export default function PlanPage() {
     sessionId,
     questions,
     answers,
-    completenessScore,
-    collectedData,
+    questionsState,
+    data: clarificationData,
     error: clarificationError,
     startSession,
     setAnswer,
     setQuestions,
-    setCompletenessScore,
-    incrementRound,
+    updateFromResponse,
     setComplete,
+    startEditing,
     setError: setClarificationError,
     reset: resetClarification,
+    getConflicts,
   } = useClarificationStore();
+
+  // Get conflicts from state
+  const conflicts = getConflicts();
 
   // Refs to track initialization and prevent duplicate requests
   const dayOptionsRequestedRef = useRef<number>(0);
@@ -169,11 +174,12 @@ export default function PlanPage() {
         questionCount: response.questions.length,
       });
 
-      // Initialize clarification store
+      // Initialize clarification store with v2 response
       startSession(
         response.session_id,
         response.questions,
-        response.state.completeness_score
+        response.state,
+        response.data
       );
 
       // Store trip data for later use
@@ -227,18 +233,15 @@ export default function PlanPage() {
 
       debugLog('api_response', 'Clarification response received', {
         complete: response.complete,
-        hasMoreQuestions: !!response.questions,
+        hasMoreQuestions: response.questions.length > 0,
       });
 
-      if (response.complete && response.collected_data) {
-        // Clarification complete - set progress to 100% before completing
-        setCompletenessScore(100);
-        setComplete(response.collected_data);
-      } else if (response.questions && response.state) {
-        // More questions
-        setQuestions(response.questions);
-        setCompletenessScore(response.state.completeness_score);
-        incrementRound();
+      if (response.complete) {
+        // Clarification complete
+        setComplete(response.data, response.state);
+      } else {
+        // More questions - use updateFromResponse to update all state at once
+        updateFromResponse(response.questions, response.state, response.data);
       }
     } catch (error) {
       console.error('Failed to submit answers:', error);
@@ -249,9 +252,7 @@ export default function PlanPage() {
           resetClarification();
         }
       } else {
-        setClarificationError(
-          'Failed to submit answers. Please try again.'
-        );
+        setClarificationError('Failed to submit answers. Please try again.');
       }
     } finally {
       setIsSubmitting(false);
@@ -267,6 +268,37 @@ export default function PlanPage() {
     }
   };
 
+  // Handle editing preferences - go back to questions
+  const handleEditPreferences = async () => {
+    if (!sessionId) return;
+
+    setIsSubmitting(true);
+    setClarificationError(null);
+
+    debugLog('user_action', 'Editing preferences', { sessionId });
+
+    try {
+      // Start editing mode in store (this restores answers from data)
+      startEditing();
+
+      // Re-submit to get fresh questions from backend
+      const response = await submitClarificationResponses(sessionId, answers);
+
+      if (response.questions.length > 0) {
+        setQuestions(response.questions);
+      }
+    } catch (error) {
+      console.error('Failed to start editing:', error);
+      if (error instanceof ClarificationApiError) {
+        setClarificationError(error.message);
+      } else {
+        setClarificationError('Failed to edit preferences. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Proceed to planning phase after viewing summary
   const handleProceedToPlanning = () => {
     setIsResearching(true);
@@ -276,7 +308,8 @@ export default function PlanPage() {
     const researchMessage: ChatMessage = {
       id: `msg_${Date.now()}_research`,
       role: 'assistant',
-      content: 'Researching your trip based on your preferences... This will take a moment.',
+      content:
+        'Researching your trip based on your preferences... This will take a moment.',
       timestamp: new Date().toISOString(),
       type: 'info',
     };
@@ -295,10 +328,30 @@ export default function PlanPage() {
   // Check if all current questions are answered
   const allQuestionsAnswered = questions.every((q) => {
     const answer = answers[q.field];
-    if (Array.isArray(answer)) {
-      return answer.length > 0;
+
+    // Handle different question types
+    switch (q.type) {
+      case 'single_select':
+        return !!answer;
+      case 'multi_select':
+        return Array.isArray(answer) && answer.length > 0;
+      case 'ranked':
+        // Ranked answers are objects like {"1": "...", "2": "...", "3": "..."}
+        if (typeof answer !== 'object' || answer === null || Array.isArray(answer)) {
+          return false;
+        }
+        const rankedObj = answer as Record<string, string>;
+        const hasEntries = Object.keys(rankedObj).length > 0;
+        // Check min_selections if specified
+        if (q.min_selections) {
+          return Object.keys(rankedObj).length >= q.min_selections;
+        }
+        return hasEntries;
+      case 'text':
+        return typeof answer === 'string' && answer.trim().length > 0;
+      default:
+        return !!answer;
     }
-    return !!answer;
   });
 
   // Request day options when entering planning phase or after selecting an option
@@ -441,7 +494,10 @@ export default function PlanPage() {
         trip_id: tripData.id,
         days: lockedDays,
         metadata: {
-          total_cost: lockedDays.reduce((acc, day) => acc + day.summary.total_cost, 0),
+          total_cost: lockedDays.reduce(
+            (acc, day) => acc + day.summary.total_cost,
+            0
+          ),
           total_days: totalDays,
           locked: false,
         },
@@ -454,7 +510,7 @@ export default function PlanPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header with Progress */}
-      <header className="border-b">
+      <header className="sticky top-0 z-40 bg-background border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="max-w-3xl mx-auto">
             <ProgressBar currentStep={currentStep} />
@@ -507,8 +563,15 @@ export default function PlanPage() {
 
             {/* Progress */}
             <div className="mb-6">
-              <CompletenessProgress score={completenessScore} />
+              <CompletenessProgress score={questionsState?.score ?? 0} />
             </div>
+
+            {/* Conflict Warning */}
+            {conflicts.length > 0 && (
+              <div className="mb-6">
+                <ConflictWarningBanner conflicts={conflicts} />
+              </div>
+            )}
 
             {/* Error */}
             {clarificationError && (
@@ -534,10 +597,13 @@ export default function PlanPage() {
                   </p>
                 </div>
               </Card>
-            ) : clarificationStatus === 'complete' && collectedData ? (
+            ) : clarificationStatus === 'complete' && clarificationData ? (
               // Summary view
               <div className="space-y-6">
-                <ClarificationSummary collectedData={collectedData} />
+                <ClarificationSummary
+                  collectedData={clarificationData}
+                  onEdit={handleEditPreferences}
+                />
                 <Button
                   size="lg"
                   className="w-full"
@@ -552,7 +618,7 @@ export default function PlanPage() {
               <div className="space-y-4">
                 {questions.map((question) => (
                   <QuestionCard
-                    key={question.question_id}
+                    key={question.id}
                     question={question}
                     value={answers[question.field]}
                     onChange={setAnswer}
@@ -665,7 +731,11 @@ export default function PlanPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Estimated Cost</span>
                   <span>
-                    ${lockedDays.reduce((acc, day) => acc + day.summary.total_cost, 0)}
+                    $
+                    {lockedDays.reduce(
+                      (acc, day) => acc + day.summary.total_cost,
+                      0
+                    )}
                   </span>
                 </div>
               </div>

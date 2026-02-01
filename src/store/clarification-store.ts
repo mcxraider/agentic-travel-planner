@@ -1,29 +1,45 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ClarificationQuestion, ClarificationState } from '@/types';
+import {
+  Question,
+  QuestionsState,
+  ClarificationData,
+  ClarificationState,
+} from '@/types';
 
 interface ClarificationActions {
   // Session management
   startSession: (
     sessionId: string,
-    questions: ClarificationQuestion[],
-    completenessScore: number
+    questions: Question[],
+    state: QuestionsState,
+    data: ClarificationData
   ) => void;
-  setQuestions: (questions: ClarificationQuestion[]) => void;
+  setQuestions: (questions: Question[]) => void;
 
   // Answer management
-  setAnswer: (field: string, value: string | string[]) => void;
+  setAnswer: (field: string, value: unknown) => void;
   clearAnswers: () => void;
 
   // Progress tracking
-  setCompletenessScore: (score: number) => void;
+  updateFromResponse: (
+    questions: Question[],
+    state: QuestionsState,
+    data: ClarificationData
+  ) => void;
   incrementRound: () => void;
 
   // Completion
-  setComplete: (collectedData: Record<string, unknown>) => void;
+  setComplete: (data: ClarificationData, state: QuestionsState) => void;
+
+  // Editing
+  startEditing: () => void;
 
   // Error handling
   setError: (error: string | null) => void;
+
+  // Helpers
+  getConflicts: () => string[];
 
   // Reset
   reset: () => void;
@@ -35,22 +51,23 @@ const initialState: ClarificationState = {
   currentRound: 0,
   questions: [],
   answers: {},
-  completenessScore: 0,
-  collectedData: null,
+  questionsState: null,
+  data: null,
   error: null,
 };
 
 export const useClarificationStore = create<ClarificationState & ClarificationActions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initialState,
 
-      startSession: (sessionId, questions, completenessScore) =>
+      startSession: (sessionId, questions, state, data) =>
         set({
           status: 'in_progress',
           sessionId,
           questions,
-          completenessScore,
+          questionsState: state,
+          data,
           currentRound: 1,
           answers: {},
           error: null,
@@ -68,7 +85,14 @@ export const useClarificationStore = create<ClarificationState & ClarificationAc
 
       clearAnswers: () => set({ answers: {} }),
 
-      setCompletenessScore: (score) => set({ completenessScore: score }),
+      updateFromResponse: (questions, state, data) =>
+        set((currentState) => ({
+          questions,
+          questionsState: state,
+          data,
+          currentRound: currentState.currentRound + 1,
+          answers: {}, // Clear answers for new round
+        })),
 
       incrementRound: () =>
         set((state) => ({
@@ -76,23 +100,63 @@ export const useClarificationStore = create<ClarificationState & ClarificationAc
           answers: {}, // Clear answers for new round
         })),
 
-      setComplete: (collectedData) =>
+      setComplete: (data, state) =>
         set({
           status: 'complete',
-          collectedData,
+          data,
+          questionsState: state,
           questions: [],
         }),
 
+      startEditing: () =>
+        set((state) => {
+          // Restore answers from data, filtering to valid answer types
+          const restoredAnswers: Record<string, unknown> = {};
+          if (state.data) {
+            for (const [key, value] of Object.entries(state.data)) {
+              // Skip internal fields
+              if (key.startsWith('_')) continue;
+
+              if (typeof value === 'string') {
+                restoredAnswers[key] = value;
+              } else if (
+                Array.isArray(value) &&
+                value.every((v) => typeof v === 'string')
+              ) {
+                restoredAnswers[key] = value;
+              } else if (
+                typeof value === 'object' &&
+                value !== null &&
+                !Array.isArray(value)
+              ) {
+                // Ranked object (e.g., {"1": "...", "2": "...", "3": "..."})
+                restoredAnswers[key] = value;
+              }
+            }
+          }
+          return {
+            status: 'in_progress',
+            data: null,
+            answers: restoredAnswers,
+          };
+        }),
+
       setError: (error) => set({ error }),
+
+      getConflicts: () => {
+        const state = get();
+        return state.questionsState?.conflicts_detected || [];
+      },
 
       reset: () => set(initialState),
     }),
     {
       name: 'clarification-storage',
       partialize: (state) => ({
-        // Only persist collectedData for use in planning phase
-        collectedData: state.collectedData,
+        // Only persist data for use in planning phase
+        data: state.data,
         status: state.status,
+        questionsState: state.questionsState,
       }),
     }
   )

@@ -14,8 +14,8 @@ export function Navbar() {
   const { userProfile } = useTripStore();
   const [profileOpen, setProfileOpen] = useState(false);
 
-  // Hide navbar on itinerary page (it has its own integrated header)
-  if (pathname?.startsWith('/itinerary')) {
+  // Hide navbar on itinerary and plan pages
+  if (pathname?.startsWith('/itinerary') || pathname?.startsWith('/plan')) {
     return null;
   }
 
