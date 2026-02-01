@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Event, Itinerary } from '@/types';
+import { Event, Itinerary, ChatMessage } from '@/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,11 +25,7 @@ interface EditChatSidebarProps {
   onDeleteSelected: () => void;
 }
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-}
+// ChatMessage imported from @/types/chat - uses the shared type definition
 
 export function EditChatSidebar({
   isOpen,
@@ -45,6 +41,7 @@ export function EditChatSidebar({
       id: '1',
       role: 'assistant',
       content: "Hi! I'm here to help you edit your itinerary. Select some events and tell me what you'd like to change, or just ask me for suggestions!",
+      timestamp: new Date().toISOString(),
     },
   ]);
 
@@ -65,6 +62,7 @@ export function EditChatSidebar({
       id: `user_${Date.now()}`,
       role: 'user',
       content: inputValue,
+      timestamp: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -76,6 +74,7 @@ export function EditChatSidebar({
         id: `assistant_${Date.now()}`,
         role: 'assistant',
         content: getPlaceholderResponse(inputValue, selectedEvents.length),
+        timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
     }, 1000);

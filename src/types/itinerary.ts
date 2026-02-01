@@ -116,3 +116,9 @@ export interface DayWarning {
   message: string;
   conflictType: Conflict['type'];
 }
+
+/**
+ * Maps event IDs to their conflict messages.
+ * Used to display conflict warnings on individual events in the itinerary view.
+ */
+export type EventConflictMap = Record<string, string>;
