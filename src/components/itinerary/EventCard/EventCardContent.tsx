@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useEventCard } from './EventCardContext';
+import { EventCardMetadataDropdown } from './EventCardMetadataDropdown';
 
 interface EventCardTimeProps {
   className?: string;
@@ -51,6 +52,8 @@ interface EventCardDetailsProps {
   showDescription?: boolean;
   /** Whether to show metadata (location, cost, duration). Defaults to true. */
   showMetadata?: boolean;
+  /** Whether to show the expandable metadata dropdown. Defaults to false. */
+  showMetadataDropdown?: boolean;
 }
 
 /**
@@ -65,6 +68,7 @@ export function EventCardDetails({
   className,
   showDescription = true,
   showMetadata = true,
+  showMetadataDropdown = false,
 }: EventCardDetailsProps) {
   const { displayedEvent } = useEventCard();
   const typeConfig = getEventTypeConfig(displayedEvent.type);
@@ -107,6 +111,9 @@ export function EventCardDetails({
           <span className="text-gray-400">{displayedEvent.duration_minutes} min</span>
         </div>
       )}
+
+      {/* Expandable metadata dropdown */}
+      {showMetadataDropdown && <EventCardMetadataDropdown />}
     </div>
   );
 }
@@ -187,6 +194,8 @@ interface EventCardContentProps {
   showDescription?: boolean;
   /** Whether to show metadata (location, cost, duration). Defaults to true. */
   showMetadata?: boolean;
+  /** Whether to show the expandable metadata dropdown. Defaults to false. */
+  showMetadataDropdown?: boolean;
 }
 
 /**
@@ -204,6 +213,7 @@ export function EventCardContent({
   className,
   showDescription = true,
   showMetadata = true,
+  showMetadataDropdown = false,
 }: EventCardContentProps) {
   return (
     <>
@@ -212,6 +222,7 @@ export function EventCardContent({
         className={className}
         showDescription={showDescription}
         showMetadata={showMetadata}
+        showMetadataDropdown={showMetadataDropdown}
       />
     </>
   );
