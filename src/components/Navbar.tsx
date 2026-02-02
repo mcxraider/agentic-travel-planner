@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Compass, User } from 'lucide-react';
+import { HealthStatusIndicator } from './HealthStatusIndicator';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { UserProfileModal } from './UserProfileModal';
@@ -39,6 +40,7 @@ export function Navbar() {
         >
           <Compass className="h-5 w-5 text-blue-600 group-hover:rotate-45 transition-transform" />
           <span className="font-bold text-lg text-gray-900">Trippi</span>
+          <HealthStatusIndicator className="ml-1" />
         </Link>
 
         {/* Profile Button - Right side */}

@@ -27,6 +27,7 @@ import {
   EventCardAddAlternativeButton,
   EventCardDeleteButton,
 } from './EventCardActions';
+import { EventCardMetadataDropdown } from './EventCardMetadataDropdown';
 
 // Re-export types and hooks for external use
 export type { EventCardContextValue, EventCardProviderProps } from './EventCardContext';
@@ -92,6 +93,9 @@ export const EventCard = Object.assign(EventCardLegacy, {
   CycleButton: EventCardCycleButton,
   AddAlternativeButton: EventCardAddAlternativeButton,
   DeleteButton: EventCardDeleteButton,
+
+  // Metadata
+  MetadataDropdown: EventCardMetadataDropdown,
 });
 
 /**
@@ -153,7 +157,7 @@ function EventCardLegacy({
 
         {/* Main content */}
         <EventCardDragHandle />
-        <EventCardContent />
+        <EventCardContent showMetadataDropdown />
         <EventCardActions
           maxAlternatives={2}
         />

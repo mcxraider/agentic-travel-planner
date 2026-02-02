@@ -16,6 +16,7 @@ import {
   ClarificationSummary,
   ApiError,
   ConflictWarningBanner,
+  AgenticLoadingState,
 } from '@/components/clarification';
 import {
   useTripStore,
@@ -632,10 +633,7 @@ export default function PlanPage() {
                   disabled={!allQuestionsAnswered || isSubmitting}
                 >
                   {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Submitting...
-                    </>
+                    <AgenticLoadingState isLoading={isSubmitting} />
                   ) : (
                     'Continue'
                   )}
