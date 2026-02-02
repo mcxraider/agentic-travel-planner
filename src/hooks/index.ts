@@ -10,3 +10,4 @@ export {
   STEP_REVIEW,
 } from './use-planning-wizard';
 export type { WizardStep } from './use-planning-wizard';
+export { useVersionHistory } from './use-version-history';

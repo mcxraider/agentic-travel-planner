@@ -7,3 +7,6 @@ export { EditChatSidebar } from './EditChatSidebar';
 export { AddEventForm } from './AddEventForm';
 export { AddAlternativeForm } from './AddAlternativeForm';
 export { OptimizationModal } from './OptimizationModal';
+export { VersionHistoryDrawer } from './VersionHistoryDrawer';
+export { VersionItem } from './VersionItem';
+export { VersionPreviewModal } from './VersionPreviewModal';
