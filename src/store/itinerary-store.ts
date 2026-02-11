@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Itinerary, Day, Event, DayWarning, EventConflictMap } from '@/types';
+import { recalculateEventTimes } from '@/lib/utils';
 
 // EventConflictMap is now imported from @/types/itinerary
 
@@ -111,15 +112,29 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
       if (fromDay === toDay) {
         if (newIndex === undefined) return state;
 
-        const events = [...fromDayData.events];
+        const originalEvents = [...fromDayData.events];
         // Remove all events in the group
-        const remainingEvents = events.filter((e) => !eventIdsToMove.includes(e.id));
+        const remainingEvents = originalEvents.filter((e) => !eventIdsToMove.includes(e.id));
         // Insert at new position
         remainingEvents.splice(newIndex, 0, ...eventsToMove);
 
+        // Update order fields
+        const reorderedEvents = remainingEvents.map((e, idx) => ({ ...e, order: idx }));
+
+        // Find the earliest affected primary index for recalculation
+        const oldPrimaryIndex = originalEvents
+          .filter((e) => !e.alternativeGroupId || e.isPrimaryAlternative !== false)
+          .findIndex((e) => eventIdsToMove.includes(e.id));
+        const startIndex = Math.min(
+          oldPrimaryIndex >= 0 ? oldPrimaryIndex : 0,
+          newIndex
+        );
+
+        const recalculated = recalculateEventTimes(originalEvents, reorderedEvents, startIndex);
+
         const updatedDays = state.itinerary.days.map((d) =>
           d.day_number === fromDay
-            ? { ...d, events: remainingEvents.map((e, idx) => ({ ...e, order: idx })) }
+            ? { ...d, events: recalculated }
             : d
         );
 
@@ -132,7 +147,7 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
       // Moving to different day
       const updatedDays = state.itinerary.days.map((day) => {
         if (day.day_number === fromDay) {
-          // Remove events from source day
+          // Remove events from source day (no time recalc — gap just widens)
           return {
             ...day,
             events: day.events
@@ -141,14 +156,24 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
           };
         }
         if (day.day_number === toDay) {
-          // Add events to target day
+          const originalTargetEvents = [...day.events];
           const events = [...day.events];
           const insertIndex = newIndex !== undefined ? newIndex : events.length;
           events.splice(insertIndex, 0, ...eventsToMove);
-          return {
-            ...day,
-            events: events.map((e, idx) => ({ ...e, order: idx })),
-          };
+          const reorderedEvents = events.map((e, idx) => ({ ...e, order: idx }));
+
+          // Recalculate times on the target day if it had events
+          if (originalTargetEvents.length > 0) {
+            const recalculated = recalculateEventTimes(
+              originalTargetEvents,
+              reorderedEvents,
+              insertIndex
+            );
+            return { ...day, events: recalculated };
+          }
+
+          // Empty target day — the moved event keeps its original time
+          return { ...day, events: reorderedEvents };
         }
         return day;
       });
