@@ -12,3 +12,4 @@ export {
 } from './use-planning-wizard';
 export type { WizardStep } from './use-planning-wizard';
 export { useVersionHistory } from './use-version-history';
+export { useServerHealth } from './use-server-health';

@@ -24,7 +24,7 @@ import {
   EventCardActions,
   EventCardDismissConflict,
   EventCardCycleButton,
-  EventCardAddAlternativeButton,
+  EventCardMoreActionsButton,
   EventCardDeleteButton,
 } from './EventCardActions';
 import { EventCardMetadataDropdown } from './EventCardMetadataDropdown';
@@ -91,7 +91,8 @@ export const EventCard = Object.assign(EventCardLegacy, {
   Actions: EventCardActions,
   DismissConflict: EventCardDismissConflict,
   CycleButton: EventCardCycleButton,
-  AddAlternativeButton: EventCardAddAlternativeButton,
+  AddAlternativeButton: EventCardMoreActionsButton,
+  MoreActionsButton: EventCardMoreActionsButton,
   DeleteButton: EventCardDeleteButton,
 
   // Metadata

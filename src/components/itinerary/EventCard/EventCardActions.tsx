@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Trash2, Plus, X, ArrowLeftRight } from 'lucide-react';
+import { Trash2, Plus, X, ArrowLeftRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { useEventCard } from './EventCardContext';
 
 interface EventCardDismissConflictProps {
@@ -137,6 +137,82 @@ export function EventCardAddAlternativeButton({
   );
 }
 
+interface EventCardMoreActionsButtonProps {
+  className?: string;
+  /** Maximum number of alternatives allowed (excluding primary). Defaults to 2. */
+  maxAlternatives?: number;
+}
+
+/**
+ * "..." button that opens a popover menu with actions: Add Alternative, Edit Event.
+ * Replaces the standalone AddAlternativeButton.
+ */
+export function EventCardMoreActionsButton({
+  className,
+  maxAlternatives = 2,
+}: EventCardMoreActionsButtonProps) {
+  const [open, setOpen] = useState(false);
+  const { event, dayNumber, alternatives, onAddAlternative, onEditEvent } = useEventCard();
+
+  const canAddAlternative = onAddAlternative && alternatives.length < maxAlternatives;
+  const canEdit = !!onEditEvent;
+
+  if (!canAddAlternative && !canEdit) return null;
+
+  const handleAddAlternative = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(false);
+    onAddAlternative!(dayNumber, event);
+  };
+
+  const handleEditEvent = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(false);
+    onEditEvent!(dayNumber, event);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity rounded-full border border-gray-300 bg-white hover:bg-gray-50 hover:border-blue-400',
+            className
+          )}
+          onClick={(e) => e.stopPropagation()}
+          title="More actions"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5 text-gray-500" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-40 p-1" side="top" align="end">
+        <div className="flex flex-col">
+          {canAddAlternative && (
+            <button
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm transition-colors"
+              onClick={handleAddAlternative}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Alternative
+            </button>
+          )}
+          {canEdit && (
+            <button
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-sm transition-colors"
+              onClick={handleEditEvent}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit Event
+            </button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 interface EventCardDeleteButtonProps {
   className?: string;
   /** Whether to show confirmation popover. Defaults to true. */
@@ -262,7 +338,7 @@ export function EventCardActions({
       {/* Action buttons row */}
       <div className={cn('flex flex-row gap-1 flex-shrink-0', className)}>
         {showCycleButton && <EventCardCycleButton />}
-        {showAddAlternative && <EventCardAddAlternativeButton maxAlternatives={maxAlternatives} />}
+        {showAddAlternative && <EventCardMoreActionsButton maxAlternatives={maxAlternatives} />}
         {showDelete && <EventCardDeleteButton />}
       </div>
     </>

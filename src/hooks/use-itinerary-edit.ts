@@ -14,6 +14,7 @@ interface UseItineraryEditResult {
   showOptimizationModal: boolean;
   addEventDayNumber: number | null;
   addAlternativeEvent: { dayNumber: number; event: Event } | null;
+  editEventData: { dayNumber: number; event: Event } | null;
 
   // Event handlers
   handleSelectEvent: (eventId: string, multiSelect: boolean) => void;
@@ -44,6 +45,11 @@ interface UseItineraryEditResult {
 
   // Undo
   handleUndo: () => void;
+
+  // Edit event
+  handleOpenEditEvent: (dayNumber: number, event: Event) => void;
+  handleCloseEditEvent: () => void;
+  handleEditEvent: (dayNumber: number, eventId: string, updatedFields: Partial<Event>) => void;
 
   // Add event modal
   handleOpenAddEvent: (dayNumber: number) => void;
@@ -83,6 +89,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
     clearSelection,
     toggleEventSelection,
     deleteEvent,
+    editEvent,
     moveEvent,
     addEvent,
     addAlternative,
@@ -103,6 +110,10 @@ export function useItineraryEdit(): UseItineraryEditResult {
   const [optimizations, setOptimizations] = useState<Optimization[]>([]);
   const [addEventDayNumber, setAddEventDayNumber] = useState<number | null>(null);
   const [addAlternativeEvent, setAddAlternativeEvent] = useState<{
+    dayNumber: number;
+    event: Event;
+  } | null>(null);
+  const [editEventData, setEditEventData] = useState<{
     dayNumber: number;
     event: Event;
   } | null>(null);
@@ -193,6 +204,28 @@ export function useItineraryEdit(): UseItineraryEditResult {
   const handleCloseAddEvent = useCallback(() => {
     setAddEventDayNumber(null);
   }, []);
+
+  // Edit event
+  const handleOpenEditEvent = useCallback((dayNumber: number, event: Event) => {
+    setEditEventData({ dayNumber, event });
+  }, []);
+
+  const handleCloseEditEvent = useCallback(() => {
+    setEditEventData(null);
+  }, []);
+
+  const handleEditEvent = useCallback(
+    (dayNumber: number, eventId: string, updatedFields: Partial<Event>) => {
+      debugLog('user_action', 'Edited event', { dayNumber, eventId });
+      pushUndo();
+      editEvent(dayNumber, eventId, updatedFields);
+      toast({
+        title: 'Event updated',
+        description: 'Your changes have been saved.',
+      });
+    },
+    [pushUndo, editEvent, toast, debugLog]
+  );
 
   // Alternatives
   const handleOpenAddAlternative = useCallback((dayNumber: number, event: Event) => {
@@ -414,6 +447,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
     showOptimizationModal,
     addEventDayNumber,
     addAlternativeEvent,
+    editEventData,
 
     // Event handlers
     handleSelectEvent,
@@ -444,6 +478,11 @@ export function useItineraryEdit(): UseItineraryEditResult {
 
     // Undo
     handleUndo,
+
+    // Edit event
+    handleOpenEditEvent,
+    handleCloseEditEvent,
+    handleEditEvent,
 
     // Add event modal
     handleOpenAddEvent,

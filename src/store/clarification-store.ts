@@ -40,6 +40,7 @@ interface ClarificationActions {
 
   // Helpers
   getConflicts: () => string[];
+  getComputedScore: () => number;
 
   // Reset
   reset: () => void;
@@ -146,6 +147,37 @@ export const useClarificationStore = create<ClarificationState & ClarificationAc
       getConflicts: () => {
         const state = get();
         return state.questionsState?.conflicts_detected || [];
+      },
+
+      getComputedScore: () => {
+        const state = get();
+
+        if (state.status === 'complete') return 100;
+        if (state.status === 'idle') return 0;
+
+        const qs = state.questionsState;
+        if (!qs) return 0;
+
+        const collected = qs.collected.length;
+        const missingTier1 = qs.missing_tier1.length;
+        const missingTier2 = qs.missing_tier2.length;
+        const totalFields = collected + missingTier1 + missingTier2;
+
+        if (totalFields === 0) return 0;
+
+        let clientScore = (collected / totalFields) * 100;
+
+        // Partial credit for in-progress answers in the current round
+        const currentAnswered = Object.keys(state.answers).length;
+        const currentTotal = state.questions.length;
+        if (currentTotal > 0) {
+          const partialCredit =
+            (currentAnswered / currentTotal) * (currentTotal / totalFields) * 100;
+          clientScore += partialCredit;
+        }
+
+        const backendScore = qs.score;
+        return Math.max(backendScore, Math.min(Math.round(clientScore), 99));
       },
 
       reset: () => set(initialState),

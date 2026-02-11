@@ -42,6 +42,7 @@ export interface EventCardContextValue {
   onSelect?: (eventId: string, multiSelect: boolean) => void;
   onDelete?: (dayNumber: number, eventId: string) => void;
   onAddAlternative?: (dayNumber: number, event: Event) => void;
+  onEditEvent?: (dayNumber: number, event: Event) => void;
   onCycleAlternative?: () => void;
   onDismissConflict?: (eventId: string) => void;
 }
@@ -61,6 +62,7 @@ export interface EventCardProviderProps {
   // Alternative support
   alternatives?: Event[];
   onAddAlternative?: (dayNumber: number, event: Event) => void;
+  onEditEvent?: (dayNumber: number, event: Event) => void;
   // Visual selection for cycling
   visuallySelectedId?: string;
   onVisualSelectionChange?: (groupId: string, eventId: string) => void;
@@ -83,6 +85,7 @@ export function EventCardProvider({
   isDragging: propIsDragging = false,
   alternatives = [],
   onAddAlternative: propOnAddAlternative,
+  onEditEvent: propOnEditEvent,
   visuallySelectedId: propVisuallySelectedId,
   onVisualSelectionChange: propOnVisualSelectionChange,
   conflictMessage: propConflictMessage,
@@ -108,6 +111,7 @@ export function EventCardProvider({
   const onSelect = itineraryContext?.selectEvent ?? propOnSelect;
   const onDelete = itineraryContext?.deleteEvent ?? propOnDelete;
   const onAddAlternative = itineraryContext?.openAddAlternative ?? propOnAddAlternative;
+  const onEditEvent = itineraryContext?.openEditEvent ?? propOnEditEvent;
   const onVisualSelectionChange = itineraryContext?.cycleAlternative ?? propOnVisualSelectionChange;
   const onDismissConflict = itineraryContext?.dismissConflict ?? propOnDismissConflict;
 
@@ -206,6 +210,7 @@ export function EventCardProvider({
       onSelect,
       onDelete,
       onAddAlternative,
+      onEditEvent,
       onCycleAlternative: handleCycleAlternative,
       onDismissConflict,
     }),
@@ -230,6 +235,7 @@ export function EventCardProvider({
       onSelect,
       onDelete,
       onAddAlternative,
+      onEditEvent,
       handleCycleAlternative,
       onDismissConflict,
     ]

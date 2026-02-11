@@ -24,6 +24,7 @@ interface ItineraryActions {
   moveEvent: (eventId: string, fromDay: number, toDay: number, newIndex?: number) => void;
   reorderEvent: (dayNumber: number, eventId: string, newOrder: number) => void;
   addEvent: (dayNumber: number, event: Event) => void;
+  editEvent: (dayNumber: number, eventId: string, updatedFields: Partial<Event>) => void;
   deleteEvent: (dayNumber: number, eventId: string) => void;
   selectEvent: (eventId: string) => void;
   deselectEvent: (eventId: string) => void;
@@ -195,6 +196,27 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
         return {
           ...day,
           events: [...day.events, newEvent],
+        };
+      });
+
+      return {
+        itinerary: { ...state.itinerary, days: updatedDays },
+        hasUnsavedChanges: true,
+      };
+    }),
+
+  editEvent: (dayNumber, eventId, updatedFields) =>
+    set((state) => {
+      if (!state.itinerary) return state;
+
+      const updatedDays = state.itinerary.days.map((day) => {
+        if (day.day_number !== dayNumber) return day;
+
+        return {
+          ...day,
+          events: day.events.map((e) =>
+            e.id === eventId ? { ...e, ...updatedFields } : e
+          ),
         };
       });
 

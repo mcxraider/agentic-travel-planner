@@ -22,9 +22,10 @@ export interface ItineraryContextValue {
   deleteEvent: (dayNumber: number, eventId: string) => void;
   moveEvent: (eventId: string, fromDay: number, toDay: number, newIndex?: number) => void;
 
-  // Modal triggers (opens the add event/alternative forms)
+  // Modal triggers (opens the add event/alternative/edit forms)
   openAddEvent: (dayNumber: number) => void;
   openAddAlternative: (dayNumber: number, event: Event) => void;
+  openEditEvent: (dayNumber: number, event: Event) => void;
 
   // Visual selection for cycling through alternatives
   cycleAlternative: (groupId: string, eventId: string) => void;
