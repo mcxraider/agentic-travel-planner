@@ -25,4 +25,4 @@ export interface UserProfile {
   specific_interests?: string[];
 }
 
-export type PlanningPhase = 'input' | 'clarification' | 'planning' | 'review' | 'editing';
+export type PlanningPhase = 'input' | 'clarification' | 'research' | 'planning' | 'review' | 'editing';
