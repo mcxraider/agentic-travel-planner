@@ -16,6 +16,7 @@ import {
   Loader2,
   Sparkles,
   Compass,
+  History,
 } from 'lucide-react';
 
 interface ItineraryHeaderProps {
@@ -24,10 +25,12 @@ interface ItineraryHeaderProps {
   canUndo: boolean;
   isSidebarOpen: boolean;
   isValidating?: boolean;
+  currentVersion?: number | null;
   onApplyChanges: () => void;
   onOptimize?: () => void;
   onUndo: () => void;
   onToggleSidebar: () => void;
+  onOpenHistory?: () => void;
 }
 
 export function ItineraryHeader({
@@ -36,10 +39,12 @@ export function ItineraryHeader({
   canUndo,
   isSidebarOpen,
   isValidating = false,
+  currentVersion,
   onApplyChanges,
   onOptimize,
   onUndo,
   onToggleSidebar,
+  onOpenHistory,
 }: ItineraryHeaderProps) {
   const startDate = tripData.startDate ? format(parseISO(tripData.startDate), 'MMM d') : '';
   const endDate = tripData.endDate ? format(parseISO(tripData.endDate), 'MMM d, yyyy') : '';
@@ -131,6 +136,23 @@ export function ItineraryHeader({
                 </>
               )}
             </Button>
+
+            {/* History Button */}
+            {onOpenHistory && (
+              <Button
+                variant="outline"
+                onClick={onOpenHistory}
+                className="flex items-center gap-2"
+              >
+                <History className="h-4 w-4" />
+                History
+                {currentVersion != null && currentVersion > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    v{currentVersion}
+                  </Badge>
+                )}
+              </Button>
+            )}
 
             {/* Toggle Sidebar Button */}
             <Button

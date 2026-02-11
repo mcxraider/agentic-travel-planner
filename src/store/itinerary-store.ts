@@ -14,6 +14,8 @@ interface ItineraryState {
   eventConflicts: EventConflictMap;
   // Visual selections for alternative cycling (groupId -> visually selected eventId)
   visualSelections: Record<string, string>;
+  // Current version number (null if no versions yet)
+  currentVersion: number | null;
 }
 
 interface ItineraryActions {
@@ -49,6 +51,8 @@ interface ItineraryActions {
   setVisualSelection: (groupId: string, eventId: string) => void;
   clearVisualSelections: () => void;
   applyVisualSelections: () => void;
+  // Version tracking
+  setCurrentVersion: (version: number) => void;
   reset: () => void;
 }
 
@@ -62,6 +66,7 @@ const initialState: ItineraryState = {
   warnings: [],
   eventConflicts: {},
   visualSelections: {},
+  currentVersion: null,
 };
 
 export const useItineraryStore = create<ItineraryState & ItineraryActions>((set, get) => ({
@@ -496,6 +501,9 @@ export const useItineraryStore = create<ItineraryState & ItineraryActions>((set,
         hasUnsavedChanges: true,
       };
     }),
+
+  // Version tracking
+  setCurrentVersion: (version) => set({ currentVersion: version }),
 
   reset: () => set(initialState),
 }));

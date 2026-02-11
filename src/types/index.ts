@@ -4,3 +4,4 @@ export * from './itinerary';
 export * from './chat';
 export * from './api';
 export * from './clarification';
+export * from './version';

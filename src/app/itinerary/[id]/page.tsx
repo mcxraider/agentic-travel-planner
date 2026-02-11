@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useItineraryStore, useTripStore } from '@/store';
 import { ItineraryProvider, ItineraryContextValue } from '@/contexts';
-import { useItineraryEdit } from '@/hooks';
+import { useItineraryEdit, useVersionHistory } from '@/hooks';
 import {
   ItineraryHeader,
   TimelineView,
@@ -12,6 +12,8 @@ import {
   AddEventForm,
   OptimizationModal,
   AddAlternativeForm,
+  VersionHistoryDrawer,
+  VersionPreviewModal,
 } from '@/components/itinerary';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
@@ -39,9 +41,26 @@ export default function ItineraryPage() {
     warnings,
     eventConflicts,
     visualSelections,
+    currentVersion,
     setEditSidebarOpen,
     clearSelection,
   } = useItineraryStore();
+
+  // Version history state
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const tripId = itinerary?.trip_id || null;
+
+  const {
+    groupedVersions,
+    currentVersion: apiCurrentVersion,
+    previewVersion,
+    isLoading: versionsLoading,
+    isCreating: isCreatingVersion,
+    createVersion,
+    restoreVersion,
+    openPreview,
+    closePreview,
+  } = useVersionHistory(tripId);
 
   // Use the extracted hook for all editing logic
   const {
@@ -76,6 +95,27 @@ export default function ItineraryPage() {
   } = useItineraryEdit();
 
   const [isLoading, setIsLoading] = useState(true);
+
+  // Wrap handleApplyChanges to also create a version
+  const handleApplyChangesWithVersion = useCallback(async () => {
+    // First apply changes (this does validation)
+    await handleApplyChanges();
+
+    // After successful apply, create a new version
+    if (itinerary) {
+      await createVersion(itinerary);
+    }
+  }, [handleApplyChanges, itinerary, createVersion]);
+
+  // Wrap confirm save with conflicts to also create a version
+  const handleConfirmSaveWithConflictsWithVersion = useCallback(async () => {
+    handleConfirmSaveWithConflicts();
+
+    // Create version after confirming save with conflicts
+    if (itinerary) {
+      await createVersion(itinerary);
+    }
+  }, [handleConfirmSaveWithConflicts, itinerary, createVersion]);
 
   // Check if we have the necessary data
   useEffect(() => {
@@ -190,11 +230,13 @@ export default function ItineraryPage() {
         hasUnsavedChanges={hasUnsavedChanges}
         canUndo={undoStack.length > 0}
         isSidebarOpen={editSidebarOpen}
-        isValidating={isValidating}
-        onApplyChanges={handleApplyChanges}
+        isValidating={isValidating || isCreatingVersion}
+        currentVersion={currentVersion ?? apiCurrentVersion}
+        onApplyChanges={handleApplyChangesWithVersion}
         onOptimize={handleOptimize}
         onUndo={handleUndo}
         onToggleSidebar={() => setEditSidebarOpen(!editSidebarOpen)}
+        onOpenHistory={() => setHistoryDrawerOpen(true)}
       />
 
       {/* Main Content */}
@@ -253,7 +295,7 @@ export default function ItineraryPage() {
             <AlertDialogCancel onClick={handleCancelSave}>
               Go back and fix
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmSaveWithConflicts}>
+            <AlertDialogAction onClick={handleConfirmSaveWithConflictsWithVersion}>
               Save anyway
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -267,6 +309,25 @@ export default function ItineraryPage() {
         onClose={handleSkipOptimizations}
         onApplyOptimizations={handleApplyOptimizations}
         onSkip={handleSkipOptimizations}
+      />
+
+      {/* Version History Drawer */}
+      <VersionHistoryDrawer
+        open={historyDrawerOpen}
+        onOpenChange={setHistoryDrawerOpen}
+        groupedVersions={groupedVersions}
+        currentVersion={currentVersion ?? apiCurrentVersion}
+        isLoading={versionsLoading}
+        onViewVersion={openPreview}
+      />
+
+      {/* Version Preview Modal */}
+      <VersionPreviewModal
+        version={previewVersion}
+        open={previewVersion !== null}
+        onOpenChange={(open) => !open && closePreview()}
+        onRestore={restoreVersion}
+        isRestoring={isCreatingVersion}
       />
     </div>
   );
