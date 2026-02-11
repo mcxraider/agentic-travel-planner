@@ -12,10 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DatePickerField, MultiTextInput } from '@/components/form';
+import { DatePickerField, MultiTextInput, NumericStepper } from '@/components/form';
 import {
   CURRENCY_OPTIONS,
-  TRAVEL_PARTY_OPTIONS,
   BUDGET_SCOPE_OPTIONS,
 } from '@/lib/constants';
 
@@ -29,16 +28,19 @@ export interface TripInputFormData {
   end_date: Date | undefined;
   budget: number | '';
   currency: string;
-  travel_party: string;
+  adults: number;
+  children: number;
+  elderly: number;
   budget_scope: string;
 }
 
 interface InitialInputFormProps {
   onSubmit: (data: TripInputFormData) => void;
   isLoading?: boolean;
+  isServerOffline?: boolean;
 }
 
-export function InitialInputForm({ onSubmit, isLoading }: InitialInputFormProps) {
+export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: InitialInputFormProps) {
   const [formData, setFormData] = useState<TripInputFormData>({
     destination: '',
     destination_cities: [],
@@ -46,7 +48,9 @@ export function InitialInputForm({ onSubmit, isLoading }: InitialInputFormProps)
     end_date: undefined,
     budget: '',
     currency: 'USD',
-    travel_party: '1 adult',
+    adults: 1,
+    children: 0,
+    elderly: 0,
     budget_scope: 'Total trip budget',
   });
 
@@ -201,24 +205,32 @@ export function InitialInputForm({ onSubmit, isLoading }: InitialInputFormProps)
       {/* Travel Party */}
       <div className="space-y-2">
         <Label>Travel Party</Label>
-        <Select
-          value={formData.travel_party}
-          onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, travel_party: value }))
-          }
-          disabled={isLoading}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TRAVEL_PARTY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="grid grid-cols-3 gap-4">
+          <NumericStepper
+            label="Adults"
+            value={formData.adults}
+            min={1}
+            max={20}
+            onChange={(v) => setFormData((prev) => ({ ...prev, adults: v }))}
+            disabled={isLoading}
+          />
+          <NumericStepper
+            label="Children"
+            value={formData.children}
+            min={0}
+            max={20}
+            onChange={(v) => setFormData((prev) => ({ ...prev, children: v }))}
+            disabled={isLoading}
+          />
+          <NumericStepper
+            label="Elderly"
+            value={formData.elderly}
+            min={0}
+            max={20}
+            onChange={(v) => setFormData((prev) => ({ ...prev, elderly: v }))}
+            disabled={isLoading}
+          />
+        </div>
       </div>
 
       {/* Budget Scope */}
@@ -248,8 +260,8 @@ export function InitialInputForm({ onSubmit, isLoading }: InitialInputFormProps)
       </div>
 
       {/* Submit Button */}
-      <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
-        {isLoading ? 'Starting...' : 'Start Planning'}
+      <Button type="submit" size="lg" className="w-full" disabled={isLoading || isServerOffline}>
+        {isLoading ? 'Starting...' : isServerOffline ? 'Server Offline' : 'Start Planning'}
       </Button>
     </form>
   );

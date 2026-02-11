@@ -10,6 +10,7 @@ import {
   TimelineView,
   EditChatSidebar,
   AddEventForm,
+  EditEventForm,
   OptimizationModal,
   AddAlternativeForm,
   VersionHistoryDrawer,
@@ -71,6 +72,7 @@ export default function ItineraryPage() {
     showOptimizationModal,
     addEventDayNumber,
     addAlternativeEvent,
+    editEventData,
     handleSelectEvent,
     handleDeleteEvent,
     handleDeleteSelected,
@@ -90,6 +92,9 @@ export default function ItineraryPage() {
     handleApplyOptimizations,
     handleSkipOptimizations,
     handleUndo,
+    handleOpenEditEvent,
+    handleCloseEditEvent,
+    handleEditEvent,
     handleOpenAddEvent,
     handleCloseAddEvent,
   } = useItineraryEdit();
@@ -162,6 +167,7 @@ export default function ItineraryPage() {
       // Modal triggers
       openAddEvent: handleOpenAddEvent,
       openAddAlternative: handleOpenAddAlternative,
+      openEditEvent: handleOpenEditEvent,
 
       // Visual selection for cycling
       cycleAlternative: handleVisualSelectionChange,
@@ -186,6 +192,7 @@ export default function ItineraryPage() {
       handleMoveEvent,
       handleOpenAddEvent,
       handleOpenAddAlternative,
+      handleOpenEditEvent,
       handleVisualSelectionChange,
       handleDismissConflict,
       handleDismissWarning,
@@ -270,6 +277,15 @@ export default function ItineraryPage() {
         dayNumber={addEventDayNumber || 1}
         onClose={handleCloseAddEvent}
         onAddEvent={handleAddEvent}
+      />
+
+      {/* Edit Event Dialog */}
+      <EditEventForm
+        isOpen={editEventData !== null}
+        event={editEventData?.event || null}
+        dayNumber={editEventData?.dayNumber || 1}
+        onClose={handleCloseEditEvent}
+        onEditEvent={handleEditEvent}
       />
 
       {/* Add Alternative Dialog */}

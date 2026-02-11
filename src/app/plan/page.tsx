@@ -24,12 +24,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TripData, StartSessionRequest } from '@/types';
-import { ArrowRight } from 'lucide-react';
+import { buildTravelPartyString } from '@/lib/utils';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
 import {
   startClarificationSession,
   submitClarificationResponses,
   ClarificationApiError,
 } from '@/lib/api';
+import { useServerHealth } from '@/hooks';
 
 // Step numbers for the wizard (steps 1-2 only on this page)
 const STEP_INPUT = 1;
@@ -42,6 +44,8 @@ export default function PlanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { tripData, userProfile, setTripData, setPhase } = useTripStore();
+  const { status: serverStatus } = useServerHealth();
+  const isServerHealthy = serverStatus === 'healthy';
 
   // Clarification store
   const {
@@ -49,7 +53,6 @@ export default function PlanPage() {
     sessionId,
     questions,
     answers,
-    questionsState,
     data: clarificationData,
     error: clarificationError,
     startSession,
@@ -61,6 +64,7 @@ export default function PlanPage() {
     setError: setClarificationError,
     reset: resetClarification,
     getConflicts,
+    getComputedScore,
   } = useClarificationStore();
 
   // Get conflicts from state
@@ -97,7 +101,7 @@ export default function PlanPage() {
       end_date: format(formData.end_date, 'yyyy-MM-dd'),
       budget: formData.budget as number,
       currency: formData.currency,
-      travel_party: formData.travel_party,
+      travel_party: buildTravelPartyString(formData.adults, formData.children, formData.elderly),
       budget_scope: formData.budget_scope,
     };
 
@@ -135,7 +139,7 @@ export default function PlanPage() {
         endDate: formData.end_date.toISOString(),
         budgetCategory: 'moderate', // Will be refined by clarification
         focus: [],
-        travelers: 1,
+        travelers: formData.adults + formData.children + formData.elderly,
         canDrive: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -297,6 +301,12 @@ export default function PlanPage() {
                 Tell us about your upcoming adventure
               </p>
             </div>
+            {!isServerHealthy && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm mb-4">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>Backend server is offline. Please start the server at localhost:8000.</span>
+              </div>
+            )}
             <Card className="p-6">
               {clarificationError && (
                 <div className="mb-6">
@@ -310,6 +320,7 @@ export default function PlanPage() {
               <InitialInputForm
                 onSubmit={handleFormSubmit}
                 isLoading={isSubmitting}
+                isServerOffline={!isServerHealthy}
               />
             </Card>
           </div>
@@ -331,7 +342,7 @@ export default function PlanPage() {
 
             {/* Progress */}
             <div className="mb-6">
-              <CompletenessProgress score={questionsState?.score ?? 0} />
+              <CompletenessProgress score={getComputedScore()} />
             </div>
 
             {/* Conflict Warning */}
@@ -380,14 +391,22 @@ export default function PlanPage() {
                   />
                 ))}
 
+                {!isServerHealthy && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    <span>Backend server is offline. Please start the server at localhost:8000.</span>
+                  </div>
+                )}
                 <Button
                   size="lg"
                   className="w-full"
                   onClick={handleSubmitAnswers}
-                  disabled={!allQuestionsAnswered || isSubmitting}
+                  disabled={!allQuestionsAnswered || isSubmitting || !isServerHealthy}
                 >
                   {isSubmitting ? (
                     <AgenticLoadingState isLoading={isSubmitting} />
+                  ) : !isServerHealthy ? (
+                    'Server Offline'
                   ) : (
                     'Continue'
                   )}

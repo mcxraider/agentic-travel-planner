@@ -8,12 +8,15 @@ export interface ServerHealthState {
   error: string | null;
 }
 
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+const HEALTHY_INTERVAL = 30000; // 30 seconds
+const UNHEALTHY_INTERVAL = 3000; // 3 seconds
 const HEALTH_ENDPOINT = 'http://localhost:8000/health';
 
 /**
  * Hook to monitor server health status.
- * Polls the health endpoint on mount and every 30 seconds.
+ * Polls the health endpoint with adaptive intervals:
+ * - 30s when healthy
+ * - 3s when unhealthy (for faster recovery detection)
  */
 export function useServerHealth(): ServerHealthState {
   const [state, setState] = useState<ServerHealthState>({
@@ -55,17 +58,20 @@ export function useServerHealth(): ServerHealthState {
     }
   }, []);
 
+  // Initial health check on mount
   useEffect(() => {
-    // Initial health check
     checkHealth();
+  }, [checkHealth]);
 
-    // Set up polling interval
-    const intervalId = setInterval(checkHealth, HEALTH_CHECK_INTERVAL);
+  // Adaptive polling based on current status
+  useEffect(() => {
+    const interval = state.status === 'unhealthy' ? UNHEALTHY_INTERVAL : HEALTHY_INTERVAL;
+    const intervalId = setInterval(checkHealth, interval);
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [checkHealth]);
+  }, [checkHealth, state.status]);
 
   return state;
 }
