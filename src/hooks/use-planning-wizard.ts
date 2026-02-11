@@ -5,12 +5,10 @@ import { useRouter } from 'next/navigation';
 import { format, differenceInDays } from 'date-fns';
 import {
   useTripStore,
-  useChatStore,
-  useItineraryStore,
   useClarificationStore,
   useDebugLog,
 } from '@/store';
-import { TripData, ChatMessage, StartSessionRequest, Day } from '@/types';
+import { TripData, StartSessionRequest } from '@/types';
 import {
   startClarificationSession,
   submitClarificationResponses,
@@ -20,12 +18,14 @@ import {
 // Step constants
 export const STEP_INPUT = 1;
 export const STEP_CLARIFICATION = 2;
-export const STEP_PLANNING = 3;
-export const STEP_REVIEW = 4;
+export const STEP_RESEARCH = 3;
+export const STEP_PLANNING = 4;
+export const STEP_REVIEW = 5;
 
 export type WizardStep =
   | typeof STEP_INPUT
   | typeof STEP_CLARIFICATION
+  | typeof STEP_RESEARCH
   | typeof STEP_PLANNING
   | typeof STEP_REVIEW;
 
@@ -44,7 +44,6 @@ interface UsePlanningWizardResult {
   // Current state
   currentStep: WizardStep;
   isSubmitting: boolean;
-  isResearching: boolean;
 
   // Form submission
   handleFormSubmit: (formData: TripInputFormData) => Promise<void>;
@@ -55,11 +54,8 @@ interface UsePlanningWizardResult {
   handleRetry: () => void;
   allQuestionsAnswered: boolean;
 
-  // Transition to planning
-  handleProceedToPlanning: () => void;
-
-  // Review / completion
-  handleViewItinerary: (lockedDays: Day[], totalDays: number) => void;
+  // Transition to research
+  handleProceedToResearch: () => void;
 
   // Step control
   setCurrentStep: (step: WizardStep) => void;
@@ -67,14 +63,15 @@ interface UsePlanningWizardResult {
 
 /**
  * Hook that manages the multi-step planning wizard state machine.
- * Orchestrates transitions between input, clarification, planning, and review phases.
+ * Orchestrates transitions between input, clarification, and research phases.
+ * Planning and review are handled by the /select page.
  *
  * @example
  * const {
  *   currentStep,
  *   handleFormSubmit,
  *   handleSubmitAnswers,
- *   handleProceedToPlanning,
+ *   handleProceedToResearch,
  * } = usePlanningWizard();
  */
 export function usePlanningWizard(): UsePlanningWizardResult {
@@ -83,12 +80,9 @@ export function usePlanningWizard(): UsePlanningWizardResult {
 
   const [currentStep, setCurrentStep] = useState<WizardStep>(STEP_INPUT);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isResearching, setIsResearching] = useState(false);
 
   // Store hooks
-  const { tripData, userProfile, setTripData, setPhase } = useTripStore();
-  const { setItinerary } = useItineraryStore();
-  const { addMessage, clearChat } = useChatStore();
+  const { userProfile, setTripData, setPhase } = useTripStore();
 
   const {
     status: clarificationStatus,
@@ -279,28 +273,11 @@ export function usePlanningWizard(): UsePlanningWizardResult {
     }
   }, [sessionId, answers, debugLog, startEditing, setQuestions, setClarificationError]);
 
-  // Proceed to planning phase after viewing summary
-  const handleProceedToPlanning = useCallback(() => {
-    setIsResearching(true);
-    clearChat();
-
-    const researchMessage: ChatMessage = {
-      id: `msg_${Date.now()}_research`,
-      role: 'assistant',
-      content:
-        'Researching your trip based on your preferences... This will take a moment.',
-      timestamp: new Date().toISOString(),
-      type: 'info',
-    };
-    addMessage(researchMessage);
-
-    // Wait 5 seconds then transition to planning
-    setTimeout(() => {
-      setIsResearching(false);
-      setPhase('planning');
-      setCurrentStep(STEP_PLANNING);
-    }, 5000);
-  }, [clearChat, addMessage, setPhase]);
+  // Proceed to research phase - navigate to /research
+  const handleProceedToResearch = useCallback(() => {
+    setPhase('research');
+    router.push('/research');
+  }, [setPhase, router]);
 
   // Check if all current questions are answered
   const allQuestionsAnswered = questions.every((q) => {
@@ -328,30 +305,9 @@ export function usePlanningWizard(): UsePlanningWizardResult {
     }
   });
 
-  // Navigate to final itinerary
-  const handleViewItinerary = useCallback(
-    (lockedDays: Day[], totalDays: number) => {
-      if (tripData) {
-        const finalItinerary = {
-          trip_id: tripData.id,
-          days: lockedDays,
-          metadata: {
-            total_cost: lockedDays.reduce((acc, day) => acc + day.summary.total_cost, 0),
-            total_days: totalDays,
-            locked: false,
-          },
-        };
-        setItinerary(finalItinerary);
-        router.push(`/itinerary/${tripData.id}`);
-      }
-    },
-    [tripData, setItinerary, router]
-  );
-
   return {
     currentStep,
     isSubmitting,
-    isResearching,
 
     handleFormSubmit,
     handleSubmitAnswers,
@@ -359,8 +315,7 @@ export function usePlanningWizard(): UsePlanningWizardResult {
     handleRetry,
     allQuestionsAnswered,
 
-    handleProceedToPlanning,
-    handleViewItinerary,
+    handleProceedToResearch,
     setCurrentStep,
   };
 }

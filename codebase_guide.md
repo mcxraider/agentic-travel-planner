@@ -26,12 +26,13 @@ A comprehensive guide for developers working with this AI-powered trip planning 
 
 ### What This App Does
 
-The Agentic Travel Planner guides users through a 4-step trip planning process:
+The Agentic Travel Planner guides users through a 5-step trip planning process:
 
-1. **Input Phase** - Collect basic trip details (destination, dates, budget)
-2. **Clarification Phase** - AI-driven questions to understand preferences (real backend)
-3. **Planning Phase** - Day-by-day itinerary creation with 3 options per day (mock backend)
-4. **Review/Editing Phase** - Drag-drop editable itinerary with conflict detection
+1. **Input Phase** (`/plan`) - Collect basic trip details (destination, dates, budget)
+2. **Clarification Phase** (`/plan`) - AI-driven questions to understand preferences (real backend)
+3. **Research Phase** (`/research`) - Loading animation while "researching" the trip, auto-redirects to select
+4. **Planning Phase** (`/select`) - Day-by-day itinerary creation with 3 options per day (mock backend)
+5. **Review/Editing Phase** (`/select` then `/itinerary/[id]`) - Summary and drag-drop editable itinerary
 
 ### Tech Stack
 
@@ -78,7 +79,11 @@ src/
 │   ├── page.tsx           # Landing page (/)
 │   ├── layout.tsx         # Root layout
 │   ├── plan/
-│   │   └── page.tsx       # Planning wizard (/plan)
+│   │   └── page.tsx       # Planning wizard steps 1-2 (/plan)
+│   ├── research/
+│   │   └── page.tsx       # Research loading page (/research)
+│   ├── select/
+│   │   └── page.tsx       # Day selection + review (/select)
 │   ├── itinerary/
 │   │   └── [id]/
 │   │       └── page.tsx   # Itinerary editor (/itinerary/[id])
@@ -185,16 +190,28 @@ src/
 
 ```
 ┌─────────┐    formSubmit    ┌───────────────┐   allAnswered   ┌──────────┐
-│  INPUT  │ ───────────────► │ CLARIFICATION │ ──────────────► │ PLANNING │
+│  INPUT  │ ───────────────► │ CLARIFICATION │ ──────────────► │ RESEARCH │
 │ (Step 1)│                  │   (Step 2)    │                 │ (Step 3) │
+│  /plan  │                  │    /plan      │                 │ /research│
 └─────────┘                  └───────────────┘                 └──────────┘
+                                                                     │
+                                                               auto-redirect
+                                                                  (~5s)
+                                                                     │
+                                                                     ▼
+                                                               ┌──────────┐
+                                                               │ PLANNING │
+                                                               │ (Step 4) │
+                                                               │ /select  │
+                                                               └──────────┘
                                                                      │
                                                               allDaysLocked
                                                                      │
                                                                      ▼
                                                                ┌──────────┐
                                                                │  REVIEW  │
-                                                               │ (Step 4) │
+                                                               │ (Step 5) │
+                                                               │ /select  │
                                                                └──────────┘
                                                                      │
                                                               viewItinerary
@@ -219,25 +236,45 @@ Simple composition of landing components:
 - `ProblemStatement` - Value proposition
 - `CTASection` - "Start Planning" button
 
-### `/plan` - Planning Wizard
+### `/plan` - Input & Clarification
 
-**File:** `src/app/plan/page.tsx` (~165 lines)
+**File:** `src/app/plan/page.tsx`
 
-The core planning experience with 4 steps:
+Steps 1-2 of the planning flow:
 
 | Step | Component(s) | Store(s) |
 |------|--------------|----------|
 | 1 - Input | `InitialInputForm` | TripStore |
 | 2 - Clarification | `QuestionCard`, `ClarificationSummary` | ClarificationStore |
-| 3 - Planning | `ChatWindow`, `OptionCard`, `ItineraryPreview` | ChatStore |
-| 4 - Review | Summary display | - |
 
 **Key functions:**
 - `handleFormSubmit()` - Starts clarification session
 - `handleSubmitAnswers()` - Submits clarification round
-- `handleProceedToPlanning()` - Transitions to day planning
+- `handleProceedToResearch()` - Navigates to `/research`
+
+### `/research` - Research Loading
+
+**File:** `src/app/research/page.tsx`
+
+Step 3 - Shows loading animation with cycling stages while "researching" the trip. Uses mock data fallback if no trip data in store. Auto-redirects to `/select` after ~5 seconds.
+
+### `/select` - Day Selection & Review
+
+**File:** `src/app/select/page.tsx`
+
+Steps 4-5 of the planning flow:
+
+| Step | Component(s) | Store(s) |
+|------|--------------|----------|
+| 4 - Planning | `ChatWindow`, `OptionCard`, `ItineraryPreview` | ChatStore |
+| 5 - Review | Summary display | - |
+
+**Key functions:**
 - `handleOptionSelect()` - Locks a day option
+- `handlePlanningMessage()` - Handles text input during planning
 - `handleViewItinerary()` - Navigates to itinerary page
+
+Works standalone with mock data fallback from `MOCK_RESEARCH_INPUT`.
 
 ### `/itinerary/[id]` - Itinerary Editor
 
@@ -321,7 +358,7 @@ shadcn/ui components - pre-styled Radix UI primitives:
 | Component | Purpose |
 |-----------|---------|
 | `InitialInputForm.tsx` | Trip basics form |
-| `ProgressBar.tsx` | 4-step progress indicator |
+| `ProgressBar.tsx` | 5-step progress indicator |
 | `ChatWindow.tsx` | Main chat interface |
 | `MessageBubble.tsx` | Individual message display |
 | `MessageInput.tsx` | User text input |
@@ -577,7 +614,7 @@ export const API_ENDPOINTS = {
   clarificationRespond: 'http://localhost:8000/api/clarification/respond',
 };
 
-export const PLANNING_PHASES = ['input', 'clarification', 'planning', 'review'];
+export const PLANNING_PHASES = ['input', 'clarification', 'research', 'planning', 'review'];
 export const BUDGET_CATEGORIES = ['budget', 'moderate', 'luxury'];
 export const TRIP_FOCUS_OPTIONS = ['hiking', 'adventure', 'cultural', 'relaxation'];
 ```
@@ -616,7 +653,7 @@ interface UserProfile {
   // ... more fields
 }
 
-type PlanningPhase = 'input' | 'clarification' | 'planning' | 'review' | 'editing';
+type PlanningPhase = 'input' | 'clarification' | 'research' | 'planning' | 'review' | 'editing';
 
 // Itinerary Structure
 interface Itinerary {
@@ -897,11 +934,11 @@ import { getEventTypeConfig, getEventTypeIcon } from '@/config';
 |-----------|-------|---------|
 | `components/` | 65 | All React components |
 | `hooks/` | 8 | Custom React hooks |
-| `app/` | 7 | Pages + mock API routes |
+| `app/` | 9 | Pages + mock API routes |
 | `store/` | 6 | Zustand stores |
 | `types/` | 6 | TypeScript interfaces |
 | `lib/api/` | 4 | Backend communication |
-| `lib/mock-data/` | 5 | Simulated responses |
+| `lib/mock-data/` | 6 | Simulated responses |
 | `config/` | 2 | App configuration |
 | `contexts/` | 2 | React Context |
 | **Total** | **~107** | **Full source** |
@@ -921,7 +958,9 @@ Core Hooks:
   src/hooks/use-itinerary-edit.ts   # Edit operations
 
 Main Pages:
-  src/app/plan/page.tsx             # Planning wizard
+  src/app/plan/page.tsx             # Input + Clarification (steps 1-2)
+  src/app/research/page.tsx         # Research loading (step 3)
+  src/app/select/page.tsx           # Day selection + Review (steps 4-5)
   src/app/itinerary/[id]/page.tsx   # Itinerary editor
 
 API:

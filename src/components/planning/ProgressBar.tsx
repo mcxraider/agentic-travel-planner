@@ -6,8 +6,9 @@ import { Check } from 'lucide-react';
 const steps = [
   { id: 1, name: 'Trip Details', key: 'input' },
   { id: 2, name: 'Preferences', key: 'clarification' },
-  { id: 3, name: 'Day Planning', key: 'planning' },
-  { id: 4, name: 'Review', key: 'review' },
+  { id: 3, name: 'Research', key: 'research' },
+  { id: 4, name: 'Day Planning', key: 'planning' },
+  { id: 5, name: 'Review', key: 'review' },
 ];
 
 interface ProgressBarProps {
