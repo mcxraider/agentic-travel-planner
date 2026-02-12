@@ -87,12 +87,17 @@ src/
 │   ├── itinerary/
 │   │   └── [id]/
 │   │       └── page.tsx   # Itinerary editor (/itinerary/[id])
-│   └── api/mock/          # Mock API routes
-│       ├── chat/
-│       ├── generate-day/
-│       └── validate-edit/
+│   ├── api/mock/          # Mock API routes
+│   │   ├── chat/
+│   │   ├── generate-day/
+│   │   └── validate-edit/
+│   └── api/
+│       ├── auth/[...nextauth]/ # NextAuth Google OAuth
+│       └── calendar/           # Google Calendar export
+│           ├── calendars/      # GET - list user calendars
+│           └── export/         # POST - export events
 │
-├── components/             # React components (65 files)
+├── components/             # React components (67+ files)
 │   ├── ui/                # shadcn/ui base components
 │   ├── landing/           # Home page components
 │   ├── form/              # Reusable form components
@@ -100,6 +105,8 @@ src/
 │   ├── planning/          # Planning phase UI
 │   ├── itinerary/         # Itinerary editing UI
 │   │   └── EventCard/     # Compound component for events
+│   ├── calendar/          # Google Calendar export
+│   │   └── CalendarExportModal.tsx
 │   ├── Navbar.tsx
 │   ├── DebugPanel.tsx
 │   └── HealthStatusIndicator.tsx
@@ -109,6 +116,7 @@ src/
 │   ├── clarification-store.ts
 │   ├── chat-store.ts
 │   ├── itinerary-store.ts
+│   ├── calendar-store.ts
 │   ├── debug-store.ts
 │   └── index.ts
 │
@@ -118,6 +126,7 @@ src/
 │   ├── use-day-planning.ts
 │   ├── use-itinerary-edit.ts
 │   ├── use-event-alternatives.ts
+│   ├── use-calendar-export.ts
 │   ├── use-toast.ts
 │   ├── use-server-health.ts
 │   └── index.ts
@@ -128,12 +137,19 @@ src/
 │   ├── chat.ts
 │   ├── clarification.ts
 │   ├── api.ts
+│   ├── next-auth.d.ts     # NextAuth type extensions
 │   └── index.ts
 │
 ├── lib/                    # Utilities & API
 │   ├── api/               # Backend communication
 │   │   ├── clarification.ts
 │   │   └── adapters/
+│   ├── calendar/          # Google Calendar integration
+│   │   ├── auth-provider.ts        # Auth abstraction interface
+│   │   ├── auth/google-nextauth-provider.ts
+│   │   ├── transformer.ts          # Itinerary → Calendar events
+│   │   └── index.ts
+│   ├── auth.ts            # NextAuth config
 │   ├── mock-data/         # Mock responses
 │   ├── constants.ts
 │   └── utils.ts
@@ -423,7 +439,7 @@ EventCard/
 
 ### Store Overview
 
-Five Zustand stores manage different domains:
+Six Zustand stores manage different domains:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -490,6 +506,24 @@ Five Zustand stores manage different domains:
 │   setItinerary, moveEvent, addEvent, deleteEvent,              │
 │   addAlternative, promoteAlternative, cycleAlternative,        │
 │   pushUndo, undo, applyChanges, setWarnings, setEventConflict  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ CalendarStore                                                   │
+│ Purpose: Google Calendar export modal state                     │
+│ Persisted: None                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ State:                                                          │
+│   isModalOpen: boolean                                          │
+│   exportMode: 'block' | 'detailed'                              │
+│   selectedCalendarId: string | null                              │
+│   calendars: CalendarInfo[]                                     │
+│   exportStatus: idle | fetching_calendars | exporting | ...     │
+│   errorMessage: string | null                                   │
+│   exportedEventCount: number                                    │
+│ Actions:                                                        │
+│   openModal, closeModal, setExportMode, setSelectedCalendar,   │
+│   setCalendars, setExportStatus, setExportedEventCount, reset  │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -563,6 +597,20 @@ cancelSession(sessionId: string): Promise<void>
 - `POST http://localhost:8000/api/clarification/start`
 - `POST http://localhost:8000/api/clarification/respond`
 - `GET http://localhost:8000/api/clarification/session/{id}`
+
+### Google Calendar Export
+
+**Location:** `src/app/api/calendar/`, `src/lib/calendar/`, `src/hooks/use-calendar-export.ts`
+
+```typescript
+// List user's Google Calendars (gracefully degrades to demo data)
+GET /api/calendar/calendars
+
+// Export events to Google Calendar (gracefully degrades to simulated success)
+POST /api/calendar/export  { calendarId, events: GoogleCalendarEvent[] }
+```
+
+Uses NextAuth.js (`src/lib/auth.ts`) for Google OAuth with calendar scopes. Auth abstraction layer (`src/lib/calendar/auth-provider.ts`) allows swapping auth providers. Transformer (`src/lib/calendar/transformer.ts`) converts itinerary data to Google Calendar event format.
 
 ### Mock Backend (Planning Phase)
 
@@ -895,21 +943,24 @@ export async function newApiCall(data: RequestType): Promise<ResponseType> {
 | Add new page | Create `app/new-route/page.tsx` |
 | Modify state logic | Relevant store in `store/` |
 | Add API integration | `lib/api/` |
+| Modify calendar export | `hooks/use-calendar-export.ts`, `lib/calendar/transformer.ts` |
+| Change calendar auth | `lib/calendar/auth-provider.ts`, `lib/calendar/auth/` |
 
 ### Import Shortcuts
 
 ```typescript
 // Stores
-import { useTripStore, useClarificationStore, useItineraryStore } from '@/store';
+import { useTripStore, useClarificationStore, useItineraryStore, useCalendarStore } from '@/store';
 
 // Hooks
-import { usePlanningWizard, useItineraryEdit, useEventAlternatives } from '@/hooks';
+import { usePlanningWizard, useItineraryEdit, useEventAlternatives, useCalendarExport } from '@/hooks';
 
 // Components
 import { Hero, CTASection } from '@/components/landing';
 import { InitialInputForm, ChatWindow } from '@/components/planning';
 import { QuestionCard, ClarificationSummary } from '@/components/clarification';
 import { TimelineView, EventCard, DayCard } from '@/components/itinerary';
+import { CalendarExportModal } from '@/components/calendar';
 
 // Types
 import type { TripData, Itinerary, Event, Question } from '@/types';
@@ -932,16 +983,17 @@ import { getEventTypeConfig, getEventTypeIcon } from '@/config';
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
-| `components/` | 65 | All React components |
-| `hooks/` | 8 | Custom React hooks |
-| `app/` | 9 | Pages + mock API routes |
-| `store/` | 6 | Zustand stores |
-| `types/` | 6 | TypeScript interfaces |
+| `components/` | 67+ | All React components |
+| `hooks/` | 9 | Custom React hooks |
+| `app/` | 12 | Pages + API routes |
+| `store/` | 7 | Zustand stores |
+| `types/` | 7 | TypeScript interfaces |
 | `lib/api/` | 4 | Backend communication |
+| `lib/calendar/` | 4 | Google Calendar integration |
 | `lib/mock-data/` | 6 | Simulated responses |
 | `config/` | 2 | App configuration |
 | `contexts/` | 2 | React Context |
-| **Total** | **~107** | **Full source** |
+| **Total** | **~120** | **Full source** |
 
 ### Key Files Quick Reference
 

@@ -16,6 +16,7 @@ import {
   VersionHistoryDrawer,
   VersionPreviewModal,
 } from '@/components/itinerary';
+import { CalendarExportModal } from '@/components/calendar';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import {
@@ -345,6 +346,9 @@ export default function ItineraryPage() {
         onRestore={restoreVersion}
         isRestoring={isCreatingVersion}
       />
+
+      {/* Calendar Export Modal */}
+      <CalendarExportModal />
     </div>
   );
 }

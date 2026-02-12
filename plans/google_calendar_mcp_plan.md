@@ -4,8 +4,7 @@
 
 Add the ability for users to export their itinerary to Google Calendar directly from the itinerary page. Users can authenticate with Google OAuth and choose to either block out trip dates as a single event OR add all activities as individual calendar events.
 
-**Scope:** Google Calendar only (Notion integration deferred to future iteration)
-
+**Scope:** Google Calendar only 
 ---
 
 ## Architecture

@@ -17,7 +17,9 @@ import {
   Sparkles,
   Compass,
   History,
+  CalendarPlus,
 } from 'lucide-react';
+import { useCalendarStore } from '@/store';
 
 interface ItineraryHeaderProps {
   tripData: TripData;
@@ -46,6 +48,7 @@ export function ItineraryHeader({
   onToggleSidebar,
   onOpenHistory,
 }: ItineraryHeaderProps) {
+  const openCalendarModal = useCalendarStore((s) => s.openModal);
   const startDate = tripData.startDate ? format(parseISO(tripData.startDate), 'MMM d') : '';
   const endDate = tripData.endDate ? format(parseISO(tripData.endDate), 'MMM d, yyyy') : '';
 
@@ -135,6 +138,16 @@ export function ItineraryHeader({
                   Apply Changes
                 </>
               )}
+            </Button>
+
+            {/* Add to Calendar Button */}
+            <Button
+              variant="outline"
+              onClick={openCalendarModal}
+              className="flex items-center gap-2"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Add to Calendar
             </Button>
 
             {/* History Button */}

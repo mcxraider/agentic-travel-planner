@@ -4,6 +4,8 @@ export { useItineraryStore } from './itinerary-store';
 export { useDebugStore, useDebugLog } from './debug-store';
 export type { LogCategory, LogEntry } from './debug-store';
 export { useClarificationStore } from './clarification-store';
+export { useCalendarStore } from './calendar-store';
+export type { CalendarInfo } from './calendar-store';
 
 // Re-export EventConflictMap from types for backward compatibility
 export type { EventConflictMap } from '@/types';
