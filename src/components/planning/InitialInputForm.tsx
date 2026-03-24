@@ -13,26 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DatePickerField, MultiTextInput, NumericStepper } from '@/components/form';
-import {
-  CURRENCY_OPTIONS,
-  BUDGET_SCOPE_OPTIONS,
-} from '@/lib/constants';
-
-/**
- * Form data structure matching the StartSessionRequest for clarification API
- */
-export interface TripInputFormData {
-  destination: string;
-  destination_cities: string[];
-  start_date: Date | undefined;
-  end_date: Date | undefined;
-  budget: number | '';
-  currency: string;
-  adults: number;
-  children: number;
-  elderly: number;
-  budget_scope: string;
-}
+import { CURRENCY_OPTIONS, BUDGET_SCOPE_OPTIONS } from '@/lib/constants';
+import type { TripInputFormData } from '@/types';
 
 interface InitialInputFormProps {
   onSubmit: (data: TripInputFormData) => void;
@@ -54,9 +36,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
     budget_scope: 'Total trip budget',
   });
 
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof TripInputFormData, string>>
-  >({});
+  const [errors, setErrors] = useState<Partial<Record<keyof TripInputFormData, string>>>({});
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof TripInputFormData, string>> = {};
@@ -70,11 +50,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
     if (!formData.end_date) {
       newErrors.end_date = 'Please select an end date';
     }
-    if (
-      formData.start_date &&
-      formData.end_date &&
-      formData.start_date > formData.end_date
-    ) {
+    if (formData.start_date && formData.end_date && formData.start_date > formData.end_date) {
       newErrors.end_date = 'End date must be after start date';
     }
     if (!formData.budget || formData.budget <= 0) {
@@ -103,24 +79,18 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
           id="destination"
           placeholder="e.g., Japan, Italy, Thailand"
           value={formData.destination}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, destination: e.target.value }))
-          }
+          onChange={(e) => setFormData((prev) => ({ ...prev, destination: e.target.value }))}
           className={cn(errors.destination && 'border-red-500')}
           disabled={isLoading}
         />
-        {errors.destination && (
-          <p className="text-sm text-red-500">{errors.destination}</p>
-        )}
+        {errors.destination && <p className="text-sm text-red-500">{errors.destination}</p>}
       </div>
 
       {/* Destination Cities (optional) */}
       <MultiTextInput
         label="Specific cities to visit (optional)"
         values={formData.destination_cities}
-        onChange={(cities) =>
-          setFormData((prev) => ({ ...prev, destination_cities: cities }))
-        }
+        onChange={(cities) => setFormData((prev) => ({ ...prev, destination_cities: cities }))}
         placeholder="Add a city and press Enter"
         description="e.g., Tokyo, Kyoto, Osaka"
         maxItems={10}
@@ -132,9 +102,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
         <DatePickerField
           label="Start Date"
           value={formData.start_date}
-          onChange={(date) =>
-            setFormData((prev) => ({ ...prev, start_date: date }))
-          }
+          onChange={(date) => setFormData((prev) => ({ ...prev, start_date: date }))}
           minDate={new Date()}
           error={errors.start_date}
           required
@@ -143,9 +111,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
         <DatePickerField
           label="End Date"
           value={formData.end_date}
-          onChange={(date) =>
-            setFormData((prev) => ({ ...prev, end_date: date }))
-          }
+          onChange={(date) => setFormData((prev) => ({ ...prev, end_date: date }))}
           minDate={formData.start_date || new Date()}
           error={errors.end_date}
           required
@@ -174,18 +140,14 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
             className={cn(errors.budget && 'border-red-500')}
             disabled={isLoading}
           />
-          {errors.budget && (
-            <p className="text-sm text-red-500">{errors.budget}</p>
-          )}
+          {errors.budget && <p className="text-sm text-red-500">{errors.budget}</p>}
         </div>
 
         <div className="space-y-2">
           <Label>Currency</Label>
           <Select
             value={formData.currency}
-            onValueChange={(value) =>
-              setFormData((prev) => ({ ...prev, currency: value }))
-            }
+            onValueChange={(value) => setFormData((prev) => ({ ...prev, currency: value }))}
             disabled={isLoading}
           >
             <SelectTrigger>
@@ -238,9 +200,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
         <Label>Budget Scope</Label>
         <Select
           value={formData.budget_scope}
-          onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, budget_scope: value }))
-          }
+          onValueChange={(value) => setFormData((prev) => ({ ...prev, budget_scope: value }))}
           disabled={isLoading}
         >
           <SelectTrigger>
@@ -254,9 +214,7 @@ export function InitialInputForm({ onSubmit, isLoading, isServerOffline }: Initi
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
-          How should we interpret your budget?
-        </p>
+        <p className="text-xs text-muted-foreground">How should we interpret your budget?</p>
       </div>
 
       {/* Submit Button */}

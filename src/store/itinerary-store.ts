@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { Itinerary, Day, Event, DayWarning, EventConflictMap } from '@/types';
-
-// EventConflictMap is now imported from @/types/itinerary
+import { recalculateEventTimes } from '@/lib/utils';
 
 interface ItineraryState {
   itinerary: Itinerary | null;
+  itinerariesByTripId: Record<string, Itinerary>;
   selectedEventIds: string[];
   editMode: boolean;
   editSidebarOpen: boolean;
@@ -12,14 +13,14 @@ interface ItineraryState {
   hasUnsavedChanges: boolean;
   warnings: DayWarning[];
   eventConflicts: EventConflictMap;
-  // Visual selections for alternative cycling (groupId -> visually selected eventId)
   visualSelections: Record<string, string>;
-  // Current version number (null if no versions yet)
   currentVersion: number | null;
+  currentVersionByTripId: Record<string, number>;
 }
 
 interface ItineraryActions {
   setItinerary: (itinerary: Itinerary) => void;
+  loadItinerary: (tripId: string) => Itinerary | null;
   updateDay: (dayNumber: number, day: Partial<Day>) => void;
   moveEvent: (eventId: string, fromDay: number, toDay: number, newIndex?: number) => void;
   reorderEvent: (dayNumber: number, eventId: string, newOrder: number) => void;
@@ -36,29 +37,43 @@ interface ItineraryActions {
   undo: () => void;
   canUndo: () => boolean;
   applyChanges: () => void;
-  // Warnings
   setWarnings: (warnings: DayWarning[]) => void;
   dismissWarning: (warningId: string) => void;
   clearWarnings: () => void;
-  // Event Conflicts
   setEventConflicts: (conflicts: EventConflictMap) => void;
   dismissEventConflict: (eventId: string) => void;
   clearEventConflicts: () => void;
-  // Alternatives
   addAlternative: (dayNumber: number, primaryEventId: string, alternativeEvent: Event) => void;
   promoteAlternative: (dayNumber: number, eventId: string) => void;
   removeAlternative: (dayNumber: number, eventId: string) => void;
-  // Visual selections for cycling
   setVisualSelection: (groupId: string, eventId: string) => void;
   clearVisualSelections: () => void;
   applyVisualSelections: () => void;
-  // Version tracking
   setCurrentVersion: (version: number) => void;
   reset: () => void;
 }
 
+const cloneItinerary = (itinerary: Itinerary): Itinerary =>
+  JSON.parse(JSON.stringify(itinerary)) as Itinerary;
+
+const withPersistedItinerary = (
+  state: Pick<ItineraryState, 'itinerariesByTripId' | 'currentVersionByTripId'>,
+  itinerary: Itinerary,
+  extraState: Partial<ItineraryState> = {}
+): Partial<ItineraryState> => ({
+  itinerary,
+  itinerariesByTripId: {
+    ...state.itinerariesByTripId,
+    [itinerary.trip_id]: cloneItinerary(itinerary),
+  },
+  currentVersion:
+    extraState.currentVersion ?? state.currentVersionByTripId[itinerary.trip_id] ?? null,
+  ...extraState,
+});
+
 const initialState: ItineraryState = {
   itinerary: null,
+  itinerariesByTripId: {},
   selectedEventIds: [],
   editMode: false,
   editSidebarOpen: false,
@@ -68,464 +83,574 @@ const initialState: ItineraryState = {
   eventConflicts: {},
   visualSelections: {},
   currentVersion: null,
+  currentVersionByTripId: {},
 };
 
-export const useItineraryStore = create<ItineraryState & ItineraryActions>((set, get) => ({
-  ...initialState,
+export const useItineraryStore = create<ItineraryState & ItineraryActions>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
 
-  setItinerary: (itinerary) => set({ itinerary, undoStack: [], hasUnsavedChanges: false }),
+      setItinerary: (itinerary) =>
+        set((state) => ({
+          ...withPersistedItinerary(state, itinerary, {
+            undoStack: [],
+            hasUnsavedChanges: false,
+            selectedEventIds: [],
+            warnings: [],
+            eventConflicts: {},
+            visualSelections: {},
+          }),
+        })),
 
-  updateDay: (dayNumber, dayUpdate) =>
-    set((state) => {
-      if (!state.itinerary) return state;
+      loadItinerary: (tripId) => {
+        const itinerary = get().itinerariesByTripId[tripId] ?? null;
+        if (itinerary) {
+          set((state) => ({
+            ...withPersistedItinerary(state, cloneItinerary(itinerary), {
+              undoStack: [],
+              hasUnsavedChanges: false,
+              selectedEventIds: [],
+              warnings: [],
+              eventConflicts: {},
+              visualSelections: {},
+            }),
+          }));
+        }
+        return itinerary;
+      },
 
-      const updatedDays = state.itinerary.days.map((day) =>
-        day.day_number === dayNumber ? { ...day, ...dayUpdate } : day
-      );
+      updateDay: (dayNumber, dayUpdate) =>
+        set((state) => {
+          if (!state.itinerary) return state;
 
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  moveEvent: (eventId, fromDay, toDay, newIndex) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      // Find the event and check if it has alternatives
-      const fromDayData = state.itinerary.days.find((d) => d.day_number === fromDay);
-      if (!fromDayData) return state;
-
-      const targetEvent = fromDayData.events.find((e) => e.id === eventId);
-      if (!targetEvent) return state;
-
-      // Get all events in the same alternative group (if any)
-      const groupId = targetEvent.alternativeGroupId;
-      const eventsToMove = groupId
-        ? fromDayData.events.filter((e) => e.alternativeGroupId === groupId)
-        : [targetEvent];
-      const eventIdsToMove = eventsToMove.map((e) => e.id);
-
-      // If same day, treat as reorder
-      if (fromDay === toDay) {
-        if (newIndex === undefined) return state;
-
-        const events = [...fromDayData.events];
-        // Remove all events in the group
-        const remainingEvents = events.filter((e) => !eventIdsToMove.includes(e.id));
-        // Insert at new position
-        remainingEvents.splice(newIndex, 0, ...eventsToMove);
-
-        const updatedDays = state.itinerary.days.map((d) =>
-          d.day_number === fromDay
-            ? { ...d, events: remainingEvents.map((e, idx) => ({ ...e, order: idx })) }
-            : d
-        );
-
-        return {
-          itinerary: { ...state.itinerary, days: updatedDays },
-          hasUnsavedChanges: true,
-        };
-      }
-
-      // Moving to different day
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number === fromDay) {
-          // Remove events from source day
-          return {
-            ...day,
-            events: day.events
-              .filter((e) => !eventIdsToMove.includes(e.id))
-              .map((e, idx) => ({ ...e, order: idx })),
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: state.itinerary.days.map((day) =>
+              day.day_number === dayNumber ? { ...day, ...dayUpdate } : day
+            ),
           };
-        }
-        if (day.day_number === toDay) {
-          // Add events to target day
-          const events = [...day.events];
-          const insertIndex = newIndex !== undefined ? newIndex : events.length;
-          events.splice(insertIndex, 0, ...eventsToMove);
+
           return {
-            ...day,
-            events: events.map((e, idx) => ({ ...e, order: idx })),
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
           };
-        }
-        return day;
-      });
+        }),
 
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
+      moveEvent: (eventId, fromDay, toDay, newIndex) =>
+        set((state) => {
+          if (!state.itinerary) return state;
 
-  reorderEvent: (dayNumber, eventId, newOrder) =>
-    set((state) => {
-      if (!state.itinerary) return state;
+          const fromDayData = state.itinerary.days.find((day) => day.day_number === fromDay);
+          if (!fromDayData) return state;
 
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
+          const targetEvent = fromDayData.events.find((event) => event.id === eventId);
+          if (!targetEvent) return state;
 
-        const events = [...day.events];
-        const currentIndex = events.findIndex((e) => e.id === eventId);
-        if (currentIndex === -1) return day;
+          const groupId = targetEvent.alternativeGroupId;
+          const eventsToMove = groupId
+            ? fromDayData.events.filter((event) => event.alternativeGroupId === groupId)
+            : [targetEvent];
+          const eventIdsToMove = eventsToMove.map((event) => event.id);
 
-        const [event] = events.splice(currentIndex, 1);
-        events.splice(newOrder, 0, event);
+          if (fromDay === toDay) {
+            if (newIndex === undefined) return state;
 
-        return {
-          ...day,
-          events: events.map((e, index) => ({ ...e, order: index })),
-        };
-      });
+            const originalEvents = [...fromDayData.events];
+            const remainingEvents = originalEvents.filter(
+              (event) => !eventIdsToMove.includes(event.id)
+            );
+            remainingEvents.splice(newIndex, 0, ...eventsToMove);
 
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
+            const reorderedEvents = remainingEvents.map((event, index) => ({
+              ...event,
+              order: index,
+            }));
 
-  addEvent: (dayNumber, event) =>
-    set((state) => {
-      if (!state.itinerary) return state;
+            const oldPrimaryIndex = originalEvents
+              .filter((event) => !event.alternativeGroupId || event.isPrimaryAlternative !== false)
+              .findIndex((event) => eventIdsToMove.includes(event.id));
+            const startIndex = Math.min(oldPrimaryIndex >= 0 ? oldPrimaryIndex : 0, newIndex);
 
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
+            const recalculated = recalculateEventTimes(originalEvents, reorderedEvents, startIndex);
 
-        const newEvent = { ...event, order: day.events.length };
-        return {
-          ...day,
-          events: [...day.events, newEvent],
-        };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  editEvent: (dayNumber, eventId, updatedFields) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
-
-        return {
-          ...day,
-          events: day.events.map((e) =>
-            e.id === eventId ? { ...e, ...updatedFields } : e
-          ),
-        };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  deleteEvent: (dayNumber, eventId) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
-
-        return {
-          ...day,
-          events: day.events
-            .filter((e) => e.id !== eventId)
-            .map((e, index) => ({ ...e, order: index })),
-        };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  selectEvent: (eventId) =>
-    set((state) => ({
-      selectedEventIds: state.selectedEventIds.includes(eventId)
-        ? state.selectedEventIds
-        : [...state.selectedEventIds, eventId],
-    })),
-
-  deselectEvent: (eventId) =>
-    set((state) => ({
-      selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
-    })),
-
-  toggleEventSelection: (eventId) =>
-    set((state) => ({
-      selectedEventIds: state.selectedEventIds.includes(eventId)
-        ? state.selectedEventIds.filter((id) => id !== eventId)
-        : [...state.selectedEventIds, eventId],
-    })),
-
-  clearSelection: () => set({ selectedEventIds: [] }),
-
-  toggleEditMode: () => set((state) => ({ editMode: !state.editMode })),
-
-  setEditSidebarOpen: (open) => set({ editSidebarOpen: open }),
-
-  pushUndo: () =>
-    set((state) => {
-      if (!state.itinerary) return state;
-      return {
-        undoStack: [...state.undoStack, JSON.parse(JSON.stringify(state.itinerary))],
-      };
-    }),
-
-  undo: () =>
-    set((state) => {
-      if (state.undoStack.length === 0) return state;
-
-      const newStack = [...state.undoStack];
-      const previousItinerary = newStack.pop();
-
-      return {
-        itinerary: previousItinerary || state.itinerary,
-        undoStack: newStack,
-        hasUnsavedChanges: newStack.length > 0,
-      };
-    }),
-
-  canUndo: () => get().undoStack.length > 0,
-
-  applyChanges: () =>
-    set(() => ({
-      undoStack: [],
-      hasUnsavedChanges: false,
-    })),
-
-  // Warnings
-  setWarnings: (warnings) => set({ warnings }),
-
-  dismissWarning: (warningId) =>
-    set((state) => ({
-      warnings: state.warnings.filter((w) => w.id !== warningId),
-    })),
-
-  clearWarnings: () => set({ warnings: [] }),
-
-  // Event Conflicts
-  setEventConflicts: (conflicts) => set({ eventConflicts: conflicts }),
-
-  dismissEventConflict: (eventId) =>
-    set((state) => {
-      const newConflicts = { ...state.eventConflicts };
-      delete newConflicts[eventId];
-      return { eventConflicts: newConflicts };
-    }),
-
-  clearEventConflicts: () => set({ eventConflicts: {} }),
-
-  // Alternatives
-  addAlternative: (dayNumber, primaryEventId, alternativeEvent) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
-
-        // Find the primary event
-        const primaryEvent = day.events.find((e) => e.id === primaryEventId);
-        if (!primaryEvent) return day;
-
-        // Create or use existing group ID
-        const groupId = primaryEvent.alternativeGroupId || `alt_group_${Date.now()}`;
-
-        // Update primary event with group ID if it doesn't have one
-        const updatedEvents = day.events.map((e) => {
-          if (e.id === primaryEventId) {
-            return { ...e, alternativeGroupId: groupId, isPrimaryAlternative: true };
-          }
-          return e;
-        });
-
-        // Add the alternative event with the same group ID and same order as primary
-        const newAlternative: Event = {
-          ...alternativeEvent,
-          alternativeGroupId: groupId,
-          isPrimaryAlternative: false,
-          order: primaryEvent.order, // Keep same order as primary so it stays in position
-        };
-
-        // Insert the alternative right after the primary event
-        const primaryIndex = updatedEvents.findIndex((e) => e.id === primaryEventId);
-        const eventsWithAlternative = [
-          ...updatedEvents.slice(0, primaryIndex + 1),
-          newAlternative,
-          ...updatedEvents.slice(primaryIndex + 1),
-        ];
-
-        return {
-          ...day,
-          events: eventsWithAlternative,
-        };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  promoteAlternative: (dayNumber, eventId) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
-
-        // Find the event to promote
-        const eventToPromote = day.events.find((e) => e.id === eventId);
-        if (!eventToPromote || !eventToPromote.alternativeGroupId) return day;
-
-        const groupId = eventToPromote.alternativeGroupId;
-
-        // Update all events in the group
-        const updatedEvents = day.events.map((e) => {
-          if (e.alternativeGroupId === groupId) {
-            return {
-              ...e,
-              isPrimaryAlternative: e.id === eventId,
-            };
-          }
-          return e;
-        });
-
-        return { ...day, events: updatedEvents };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  removeAlternative: (dayNumber, eventId) =>
-    set((state) => {
-      if (!state.itinerary) return state;
-
-      const updatedDays = state.itinerary.days.map((day) => {
-        if (day.day_number !== dayNumber) return day;
-
-        // Find the event to remove
-        const eventToRemove = day.events.find((e) => e.id === eventId);
-        if (!eventToRemove) return day;
-
-        const groupId = eventToRemove.alternativeGroupId;
-
-        // If it's a primary alternative, we need to promote another one
-        if (eventToRemove.isPrimaryAlternative && groupId) {
-          const otherAlternatives = day.events.filter(
-            (e) => e.alternativeGroupId === groupId && e.id !== eventId
-          );
-
-          if (otherAlternatives.length > 0) {
-            // Promote the first alternative
-            const newPrimary = otherAlternatives[0];
-            const updatedEvents = day.events
-              .filter((e) => e.id !== eventId)
-              .map((e) => {
-                if (e.id === newPrimary.id) {
-                  return { ...e, isPrimaryAlternative: true };
-                }
-                // If only one left, remove the group
-                if (e.alternativeGroupId === groupId && otherAlternatives.length === 1) {
-                  return { ...e, alternativeGroupId: undefined, isPrimaryAlternative: undefined };
-                }
-                return e;
-              })
-              .map((e, idx) => ({ ...e, order: idx }));
-
-            return { ...day, events: updatedEvents };
-          }
-        }
-
-        // Just remove the event
-        const updatedEvents = day.events
-          .filter((e) => e.id !== eventId)
-          .map((e, idx) => ({ ...e, order: idx }));
-
-        // If only one event left in group, remove group ID
-        if (groupId) {
-          const remainingInGroup = updatedEvents.filter((e) => e.alternativeGroupId === groupId);
-          if (remainingInGroup.length === 1) {
-            return {
-              ...day,
-              events: updatedEvents.map((e) =>
-                e.alternativeGroupId === groupId
-                  ? { ...e, alternativeGroupId: undefined, isPrimaryAlternative: undefined }
-                  : e
+            const nextItinerary: Itinerary = {
+              ...state.itinerary,
+              days: state.itinerary.days.map((day) =>
+                day.day_number === fromDay ? { ...day, events: recalculated } : day
               ),
             };
+
+            return {
+              ...withPersistedItinerary(state, nextItinerary),
+              hasUnsavedChanges: true,
+            };
           }
-        }
 
-        return { ...day, events: updatedEvents };
-      });
-
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
-        hasUnsavedChanges: true,
-      };
-    }),
-
-  // Visual selections for cycling (doesn't change store data until applyVisualSelections)
-  setVisualSelection: (groupId, eventId) =>
-    set((state) => ({
-      visualSelections: { ...state.visualSelections, [groupId]: eventId },
-    })),
-
-  clearVisualSelections: () => set({ visualSelections: {} }),
-
-  applyVisualSelections: () =>
-    set((state) => {
-      if (!state.itinerary || Object.keys(state.visualSelections).length === 0) {
-        return { visualSelections: {} };
-      }
-
-      // For each visual selection, promote that alternative
-      const updatedDays = state.itinerary.days.map((day) => {
-        let updatedEvents = [...day.events];
-
-        Object.entries(state.visualSelections).forEach(([groupId, selectedEventId]) => {
-          // Check if this day has events with this groupId
-          const groupEvents = updatedEvents.filter((e) => e.alternativeGroupId === groupId);
-          if (groupEvents.length === 0) return;
-
-          // Update isPrimaryAlternative flags
-          updatedEvents = updatedEvents.map((e) => {
-            if (e.alternativeGroupId === groupId) {
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number === fromDay) {
               return {
-                ...e,
-                isPrimaryAlternative: e.id === selectedEventId,
+                ...day,
+                events: day.events
+                  .filter((event) => !eventIdsToMove.includes(event.id))
+                  .map((event, index) => ({ ...event, order: index })),
               };
             }
-            return e;
+
+            if (day.day_number === toDay) {
+              const originalTargetEvents = [...day.events];
+              const events = [...day.events];
+              const insertIndex = newIndex !== undefined ? newIndex : events.length;
+              events.splice(insertIndex, 0, ...eventsToMove);
+              const reorderedEvents = events.map((event, index) => ({
+                ...event,
+                order: index,
+              }));
+
+              if (originalTargetEvents.length > 0) {
+                const recalculated = recalculateEventTimes(
+                  originalTargetEvents,
+                  reorderedEvents,
+                  insertIndex
+                );
+                return { ...day, events: recalculated };
+              }
+
+              return { ...day, events: reorderedEvents };
+            }
+
+            return day;
           });
-        });
 
-        return { ...day, events: updatedEvents };
-      });
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
 
-      return {
-        itinerary: { ...state.itinerary, days: updatedDays },
-        visualSelections: {},
-        hasUnsavedChanges: true,
-      };
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      reorderEvent: (dayNumber, eventId, newOrder) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            const events = [...day.events];
+            const currentIndex = events.findIndex((event) => event.id === eventId);
+            if (currentIndex === -1) return day;
+
+            const [event] = events.splice(currentIndex, 1);
+            events.splice(newOrder, 0, event);
+
+            return {
+              ...day,
+              events: events.map((item, index) => ({ ...item, order: index })),
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      addEvent: (dayNumber, event) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            const newEvent = { ...event, order: day.events.length };
+            return {
+              ...day,
+              events: [...day.events, newEvent],
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      editEvent: (dayNumber, eventId, updatedFields) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            return {
+              ...day,
+              events: day.events.map((event) =>
+                event.id === eventId ? { ...event, ...updatedFields } : event
+              ),
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      deleteEvent: (dayNumber, eventId) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            return {
+              ...day,
+              events: day.events
+                .filter((event) => event.id !== eventId)
+                .map((event, index) => ({ ...event, order: index })),
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      selectEvent: (eventId) =>
+        set((state) => ({
+          selectedEventIds: state.selectedEventIds.includes(eventId)
+            ? state.selectedEventIds
+            : [...state.selectedEventIds, eventId],
+        })),
+
+      deselectEvent: (eventId) =>
+        set((state) => ({
+          selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
+        })),
+
+      toggleEventSelection: (eventId) =>
+        set((state) => ({
+          selectedEventIds: state.selectedEventIds.includes(eventId)
+            ? state.selectedEventIds.filter((id) => id !== eventId)
+            : [...state.selectedEventIds, eventId],
+        })),
+
+      clearSelection: () => set({ selectedEventIds: [] }),
+
+      toggleEditMode: () => set((state) => ({ editMode: !state.editMode })),
+
+      setEditSidebarOpen: (open) => set({ editSidebarOpen: open }),
+
+      pushUndo: () =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          return {
+            undoStack: [...state.undoStack, cloneItinerary(state.itinerary)],
+          };
+        }),
+
+      undo: () =>
+        set((state) => {
+          if (state.undoStack.length === 0) return state;
+
+          const newStack = [...state.undoStack];
+          const previousItinerary = newStack.pop();
+          if (!previousItinerary) return state;
+
+          return {
+            ...withPersistedItinerary(state, previousItinerary),
+            undoStack: newStack,
+            hasUnsavedChanges: newStack.length > 0,
+          };
+        }),
+
+      canUndo: () => get().undoStack.length > 0,
+
+      applyChanges: () =>
+        set(() => ({
+          undoStack: [],
+          hasUnsavedChanges: false,
+        })),
+
+      setWarnings: (warnings) => set({ warnings }),
+
+      dismissWarning: (warningId) =>
+        set((state) => ({
+          warnings: state.warnings.filter((warning) => warning.id !== warningId),
+        })),
+
+      clearWarnings: () => set({ warnings: [] }),
+
+      setEventConflicts: (conflicts) => set({ eventConflicts: conflicts }),
+
+      dismissEventConflict: (eventId) =>
+        set((state) => {
+          const nextConflicts = { ...state.eventConflicts };
+          delete nextConflicts[eventId];
+          return { eventConflicts: nextConflicts };
+        }),
+
+      clearEventConflicts: () => set({ eventConflicts: {} }),
+
+      addAlternative: (dayNumber, primaryEventId, alternativeEvent) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            const primaryEvent = day.events.find((event) => event.id === primaryEventId);
+            if (!primaryEvent) return day;
+
+            const groupId = primaryEvent.alternativeGroupId || `alt_group_${Date.now()}`;
+
+            const updatedEvents = day.events.map((event) => {
+              if (event.id === primaryEventId) {
+                return { ...event, alternativeGroupId: groupId, isPrimaryAlternative: true };
+              }
+              return event;
+            });
+
+            const newAlternative: Event = {
+              ...alternativeEvent,
+              alternativeGroupId: groupId,
+              isPrimaryAlternative: false,
+              order: primaryEvent.order,
+            };
+
+            const primaryIndex = updatedEvents.findIndex((event) => event.id === primaryEventId);
+            const eventsWithAlternative = [
+              ...updatedEvents.slice(0, primaryIndex + 1),
+              newAlternative,
+              ...updatedEvents.slice(primaryIndex + 1),
+            ];
+
+            return {
+              ...day,
+              events: eventsWithAlternative,
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      promoteAlternative: (dayNumber, eventId) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            const eventToPromote = day.events.find((event) => event.id === eventId);
+            if (!eventToPromote || !eventToPromote.alternativeGroupId) return day;
+
+            const groupId = eventToPromote.alternativeGroupId;
+
+            return {
+              ...day,
+              events: day.events.map((event) =>
+                event.alternativeGroupId === groupId
+                  ? { ...event, isPrimaryAlternative: event.id === eventId }
+                  : event
+              ),
+            };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      removeAlternative: (dayNumber, eventId) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            if (day.day_number !== dayNumber) return day;
+
+            const eventToRemove = day.events.find((event) => event.id === eventId);
+            if (!eventToRemove) return day;
+
+            const groupId = eventToRemove.alternativeGroupId;
+
+            if (eventToRemove.isPrimaryAlternative && groupId) {
+              const otherAlternatives = day.events.filter(
+                (event) => event.alternativeGroupId === groupId && event.id !== eventId
+              );
+
+              if (otherAlternatives.length > 0) {
+                const newPrimary = otherAlternatives[0];
+                const updatedEvents = day.events
+                  .filter((event) => event.id !== eventId)
+                  .map((event) => {
+                    if (event.id === newPrimary.id) {
+                      return { ...event, isPrimaryAlternative: true };
+                    }
+
+                    if (event.alternativeGroupId === groupId && otherAlternatives.length === 1) {
+                      return {
+                        ...event,
+                        alternativeGroupId: undefined,
+                        isPrimaryAlternative: undefined,
+                      };
+                    }
+
+                    return event;
+                  })
+                  .map((event, index) => ({ ...event, order: index }));
+
+                return { ...day, events: updatedEvents };
+              }
+            }
+
+            const updatedEvents = day.events
+              .filter((event) => event.id !== eventId)
+              .map((event, index) => ({ ...event, order: index }));
+
+            if (groupId) {
+              const remainingInGroup = updatedEvents.filter(
+                (event) => event.alternativeGroupId === groupId
+              );
+              if (remainingInGroup.length === 1) {
+                return {
+                  ...day,
+                  events: updatedEvents.map((event) =>
+                    event.alternativeGroupId === groupId
+                      ? {
+                          ...event,
+                          alternativeGroupId: undefined,
+                          isPrimaryAlternative: undefined,
+                        }
+                      : event
+                  ),
+                };
+              }
+            }
+
+            return { ...day, events: updatedEvents };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            selectedEventIds: state.selectedEventIds.filter((id) => id !== eventId),
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      setVisualSelection: (groupId, eventId) =>
+        set((state) => ({
+          visualSelections: { ...state.visualSelections, [groupId]: eventId },
+        })),
+
+      clearVisualSelections: () => set({ visualSelections: {} }),
+
+      applyVisualSelections: () =>
+        set((state) => {
+          if (!state.itinerary || Object.keys(state.visualSelections).length === 0) {
+            return { visualSelections: {} };
+          }
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            let updatedEvents = [...day.events];
+
+            Object.entries(state.visualSelections).forEach(([groupId, selectedEventId]) => {
+              const groupEvents = updatedEvents.filter(
+                (event) => event.alternativeGroupId === groupId
+              );
+              if (groupEvents.length === 0) return;
+
+              updatedEvents = updatedEvents.map((event) =>
+                event.alternativeGroupId === groupId
+                  ? {
+                      ...event,
+                      isPrimaryAlternative: event.id === selectedEventId,
+                    }
+                  : event
+              );
+            });
+
+            return { ...day, events: updatedEvents };
+          });
+
+          const nextItinerary: Itinerary = {
+            ...state.itinerary,
+            days: updatedDays,
+          };
+
+          return {
+            ...withPersistedItinerary(state, nextItinerary),
+            visualSelections: {},
+            hasUnsavedChanges: true,
+          };
+        }),
+
+      setCurrentVersion: (version) =>
+        set((state) => ({
+          currentVersion: version,
+          currentVersionByTripId: state.itinerary
+            ? {
+                ...state.currentVersionByTripId,
+                [state.itinerary.trip_id]: version,
+              }
+            : state.currentVersionByTripId,
+        })),
+
+      reset: () => set(initialState),
     }),
-
-  // Version tracking
-  setCurrentVersion: (version) => set({ currentVersion: version }),
-
-  reset: () => set(initialState),
-}));
+    {
+      name: 'itinerary-storage',
+      partialize: (state) => ({
+        itinerary: state.itinerary,
+        itinerariesByTripId: state.itinerariesByTripId,
+        currentVersion: state.currentVersion,
+        currentVersionByTripId: state.currentVersionByTripId,
+      }),
+    }
+  )
+);

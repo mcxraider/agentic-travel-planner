@@ -3,17 +3,14 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, differenceInDays } from 'date-fns';
-import {
-  useTripStore,
-  useClarificationStore,
-  useDebugLog,
-} from '@/store';
-import { TripData, StartSessionRequest } from '@/types';
+import { useTripStore, useClarificationStore, useDebugLog } from '@/store';
+import { TripData, StartSessionRequest, TripInputFormData } from '@/types';
 import {
   startClarificationSession,
   submitClarificationResponses,
   ClarificationApiError,
 } from '@/lib/api';
+import { buildTravelPartyString } from '@/lib/utils';
 
 // Step constants
 export const STEP_INPUT = 1;
@@ -28,17 +25,6 @@ export type WizardStep =
   | typeof STEP_RESEARCH
   | typeof STEP_PLANNING
   | typeof STEP_REVIEW;
-
-interface TripInputFormData {
-  destination: string;
-  destination_cities: string[];
-  start_date: Date | null;
-  end_date: Date | null;
-  budget: number;
-  currency: string;
-  travel_party: string;
-  budget_scope: string;
-}
 
 interface UsePlanningWizardResult {
   // Current state
@@ -126,7 +112,7 @@ export function usePlanningWizard(): UsePlanningWizardResult {
         end_date: format(formData.end_date, 'yyyy-MM-dd'),
         budget: formData.budget as number,
         currency: formData.currency,
-        travel_party: formData.travel_party,
+        travel_party: buildTravelPartyString(formData.adults, formData.children, formData.elderly),
         budget_scope: formData.budget_scope,
       };
 
@@ -159,7 +145,7 @@ export function usePlanningWizard(): UsePlanningWizardResult {
           endDate: formData.end_date.toISOString(),
           budgetCategory: 'moderate',
           focus: [],
-          travelers: 1,
+          travelers: formData.adults + formData.children + formData.elderly,
           canDrive: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

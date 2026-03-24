@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { format, addDays } from 'date-fns';
+import { differenceInDays, format, addDays } from 'date-fns';
 import { useChatStore, useDebugLog } from '@/store';
 import { Day, Option, ChatMessage, TripData } from '@/types';
-import { API_ENDPOINTS } from '@/lib/constants';
+import { useChat } from './use-chat';
 
 interface UseDayPlanningOptions {
   tripData: TripData | null;
@@ -18,88 +18,46 @@ interface UseDayPlanningResult {
   lockedDays: Day[];
   currentOptions: Option[] | null;
   isComplete: boolean;
-
   setTotalDays: (days: number) => void;
   handleOptionSelect: (option: Option) => Promise<void>;
   handlePlanningMessage: (message: string) => void;
   reset: () => void;
 }
 
-/**
- * Hook that manages the day-by-day planning phase.
- * Handles day options fetching with request deduplication,
- * option selection, and building the final itinerary.
- *
- * @param options.tripData - Trip data for context
- * @param options.isEnabled - Whether the planning phase is active
- * @param options.onComplete - Callback when all days are planned
- *
- * @example
- * const {
- *   currentDay,
- *   totalDays,
- *   currentOptions,
- *   handleOptionSelect,
- * } = useDayPlanning({
- *   tripData,
- *   isEnabled: currentStep === STEP_PLANNING,
- *   onComplete: () => setCurrentStep(STEP_REVIEW),
- * });
- */
 export function useDayPlanning({
   tripData,
   isEnabled,
   onComplete,
 }: UseDayPlanningOptions): UseDayPlanningResult {
   const debugLog = useDebugLog();
-  const { isTyping, addMessage, setTyping } = useChatStore();
+  const { addMessage } = useChatStore();
 
   const [currentDay, setCurrentDay] = useState(1);
-  const [totalDays, setTotalDays] = useState(5);
+  const [totalDays, setTotalDays] = useState(1);
   const [lockedDays, setLockedDays] = useState<Day[]>([]);
   const [currentOptions, setCurrentOptions] = useState<Option[] | null>(null);
   const [isComplete, setIsComplete] = useState(false);
 
-  // Refs for request deduplication
-  const dayOptionsRequestedRef = useRef<number>(0);
+  const dayOptionsRequestedRef = useRef(0);
   const dayRequestInFlight = useRef(false);
 
-  // Helper to send chat API request
-  const sendChatRequest = useCallback(
-    async (message: string, day: number) => {
-      const requestBody = {
-        message,
-        conversation_id: `conv_${Date.now()}`,
-        context: {
-          current_phase: 'planning' as const,
-          current_day: day,
-          total_days: totalDays,
-          trip_data: tripData
-            ? { destination: tripData.destination, startDate: tripData.startDate }
-            : undefined,
-        },
-      };
+  const { isTyping, sendMessage, resetConversation } = useChat({
+    currentPhase: 'planning',
+    currentDay,
+    totalDays,
+    tripData: tripData
+      ? { destination: tripData.destination, startDate: tripData.startDate }
+      : undefined,
+  });
 
-      debugLog('api_request', 'Chat API: planning', { message, day });
+  useEffect(() => {
+    if (!tripData) return;
 
-      const response = await fetch(API_ENDPOINTS.chat, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-      const data = await response.json();
+    const computedDays =
+      differenceInDays(new Date(tripData.endDate), new Date(tripData.startDate)) + 1;
+    setTotalDays(computedDays);
+  }, [tripData]);
 
-      debugLog('api_response', 'Chat API response: planning', {
-        type: data.type,
-        hasOptions: !!data.options,
-      });
-
-      return data;
-    },
-    [totalDays, tripData, debugLog]
-  );
-
-  // Request day options when entering planning phase or after selecting an option
   useEffect(() => {
     const requestDayOptions = async () => {
       if (!isEnabled) return;
@@ -111,40 +69,27 @@ export function useDayPlanning({
       dayOptionsRequestedRef.current = currentDay;
 
       const dayForThisRequest = currentDay;
-
-      setTyping(true);
       setCurrentOptions(null);
 
       try {
-        const data = await sendChatRequest('get day plans', dayForThisRequest);
-
-        const assistantMessage: ChatMessage = {
-          id: `msg_${Date.now()}_day${dayForThisRequest}`,
-          role: 'assistant',
-          content: data.message,
-          timestamp: new Date().toISOString(),
-          type: data.type,
-        };
-        addMessage(assistantMessage);
-
-        if (data.options) {
-          setCurrentOptions(data.options);
-        }
+        await sendMessage('get day plans', {
+          appendUserMessage: false,
+          overrideContext: { currentDay: dayForThisRequest },
+          onOptionsReceived: setCurrentOptions,
+        });
       } catch (error) {
         console.error('Get day options error:', error);
         if (dayOptionsRequestedRef.current === dayForThisRequest) {
           dayOptionsRequestedRef.current = dayForThisRequest - 1;
         }
       } finally {
-        setTyping(false);
         dayRequestInFlight.current = false;
       }
     };
 
     requestDayOptions();
-  }, [isEnabled, currentDay, isTyping, sendChatRequest, addMessage, setTyping]);
+  }, [isEnabled, currentDay, isTyping, sendMessage]);
 
-  // Handle option selection
   const handleOptionSelect = useCallback(
     async (option: Option) => {
       debugLog('user_action', `Selected day ${currentDay} option`, {
@@ -160,9 +105,7 @@ export function useDayPlanning({
       };
       addMessage(userMessage);
 
-      const dayDate = tripData
-        ? addDays(new Date(tripData.startDate), currentDay - 1)
-        : new Date();
+      const dayDate = tripData ? addDays(new Date(tripData.startDate), currentDay - 1) : new Date();
 
       const newDay: Day = {
         day_number: currentDay,
@@ -172,7 +115,7 @@ export function useDayPlanning({
         summary: {
           total_cost: option.cost,
           active_hours: option.events_preview.reduce(
-            (acc, e) => acc + e.duration_minutes / 60,
+            (acc, event) => acc + event.duration_minutes / 60,
             0
           ),
           rest_hours: 2,
@@ -181,7 +124,7 @@ export function useDayPlanning({
         locked: true,
       };
 
-      setLockedDays((prev) => [...prev, newDay]);
+      setLockedDays((previousDays) => [...previousDays, newDay]);
       setCurrentOptions(null);
 
       if (currentDay >= totalDays) {
@@ -196,22 +139,22 @@ export function useDayPlanning({
         addMessage(completeMessage);
         setIsComplete(true);
         onComplete?.();
-      } else {
-        const confirmMessage: ChatMessage = {
-          id: `msg_${Date.now()}_confirm`,
-          role: 'assistant',
-          content: `Great choice! Day ${currentDay} is locked in with "${option.title}".\n\nMoving on to Day ${currentDay + 1}...`,
-          timestamp: new Date().toISOString(),
-          type: 'confirmation',
-        };
-        addMessage(confirmMessage);
-        setCurrentDay((prev) => prev + 1);
+        return;
       }
+
+      const confirmMessage: ChatMessage = {
+        id: `msg_${Date.now()}_confirm`,
+        role: 'assistant',
+        content: `Great choice! Day ${currentDay} is locked in with "${option.title}".\n\nMoving on to Day ${currentDay + 1}...`,
+        timestamp: new Date().toISOString(),
+        type: 'confirmation',
+      };
+      addMessage(confirmMessage);
+      setCurrentDay((previousDay) => previousDay + 1);
     },
     [currentDay, totalDays, tripData, addMessage, debugLog, onComplete]
   );
 
-  // Handle text input during planning (prompts user to select option)
   const handlePlanningMessage = useCallback(
     (message: string) => {
       const userMessage: ChatMessage = {
@@ -234,7 +177,6 @@ export function useDayPlanning({
     [addMessage]
   );
 
-  // Reset the planning state
   const reset = useCallback(() => {
     setCurrentDay(1);
     setLockedDays([]);
@@ -242,7 +184,8 @@ export function useDayPlanning({
     setIsComplete(false);
     dayOptionsRequestedRef.current = 0;
     dayRequestInFlight.current = false;
-  }, []);
+    resetConversation();
+  }, [resetConversation]);
 
   return {
     currentDay,
@@ -250,7 +193,6 @@ export function useDayPlanning({
     lockedDays,
     currentOptions,
     isComplete,
-
     setTotalDays,
     handleOptionSelect,
     handlePlanningMessage,

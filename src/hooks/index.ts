@@ -13,3 +13,4 @@ export {
 export type { WizardStep } from './use-planning-wizard';
 export { useVersionHistory } from './use-version-history';
 export { useServerHealth } from './use-server-health';
+export { useCalendarExport } from './use-calendar-export';
