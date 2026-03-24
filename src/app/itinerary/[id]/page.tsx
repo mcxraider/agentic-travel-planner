@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useItineraryStore, useTripStore } from '@/store';
 import { ItineraryProvider, ItineraryContextValue } from '@/contexts';
 import { useItineraryEdit, useVersionHistory } from '@/hooks';
@@ -32,8 +32,10 @@ import {
 
 export default function ItineraryPage() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const routeTripId = typeof params.id === 'string' ? params.id : null;
 
-  const { tripData } = useTripStore();
+  const { tripData, loadTripData } = useTripStore();
   const {
     itinerary,
     selectedEventIds,
@@ -44,13 +46,14 @@ export default function ItineraryPage() {
     eventConflicts,
     visualSelections,
     currentVersion,
+    loadItinerary,
     setEditSidebarOpen,
     clearSelection,
   } = useItineraryStore();
 
   // Version history state
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
-  const tripId = itinerary?.trip_id || null;
+  const tripId = routeTripId;
 
   const {
     groupedVersions,
@@ -104,34 +107,39 @@ export default function ItineraryPage() {
 
   // Wrap handleApplyChanges to also create a version
   const handleApplyChangesWithVersion = useCallback(async () => {
-    // First apply changes (this does validation)
-    await handleApplyChanges();
+    const savedSnapshot = await handleApplyChanges();
 
-    // After successful apply, create a new version
-    if (itinerary) {
-      await createVersion(itinerary);
+    if (savedSnapshot) {
+      await createVersion(savedSnapshot);
     }
-  }, [handleApplyChanges, itinerary, createVersion]);
+  }, [handleApplyChanges, createVersion]);
 
   // Wrap confirm save with conflicts to also create a version
   const handleConfirmSaveWithConflictsWithVersion = useCallback(async () => {
     handleConfirmSaveWithConflicts();
 
-    // Create version after confirming save with conflicts
-    if (itinerary) {
-      await createVersion(itinerary);
+    const currentSnapshot = useItineraryStore.getState().itinerary;
+    if (currentSnapshot) {
+      await createVersion(currentSnapshot);
     }
-  }, [handleConfirmSaveWithConflicts, itinerary, createVersion]);
+  }, [handleConfirmSaveWithConflicts, createVersion]);
 
   // Check if we have the necessary data
   useEffect(() => {
-    // Small delay to allow store hydration
     const timer = setTimeout(() => {
+      if (routeTripId && itinerary?.trip_id !== routeTripId) {
+        loadItinerary(routeTripId);
+      }
+
+      if (routeTripId && tripData?.id !== routeTripId) {
+        loadTripData(routeTripId);
+      }
+
       setIsLoading(false);
     }, 100);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [routeTripId, itinerary?.trip_id, tripData?.id, loadItinerary, loadTripData]);
 
   // Keyboard shortcut for undo (Ctrl/Cmd + Z)
   useEffect(() => {
@@ -211,7 +219,13 @@ export default function ItineraryPage() {
   }
 
   // No data state
-  if (!itinerary || !tripData) {
+  if (
+    !routeTripId ||
+    !itinerary ||
+    !tripData ||
+    itinerary.trip_id !== routeTripId ||
+    tripData.id !== routeTripId
+  ) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -219,10 +233,7 @@ export default function ItineraryPage() {
           <p className="text-muted-foreground mb-4">
             It looks like you haven&apos;t created an itinerary yet.
           </p>
-          <button
-            onClick={() => router.push('/plan')}
-            className="text-blue-600 hover:underline"
-          >
+          <button onClick={() => router.push('/plan')} className="text-blue-600 hover:underline">
             Start planning your trip
           </button>
         </div>
@@ -248,12 +259,7 @@ export default function ItineraryPage() {
       />
 
       {/* Main Content */}
-      <div
-        className={cn(
-          'transition-all duration-300',
-          editSidebarOpen ? 'mr-96' : 'mr-0'
-        )}
-      >
+      <div className={cn('transition-all duration-300', editSidebarOpen ? 'mr-96' : 'mr-0')}>
         <main className="max-w-4xl mx-auto px-6 py-6">
           {/* Wrap TimelineView with ItineraryProvider - no props needed! */}
           <ItineraryProvider value={contextValue}>
@@ -304,14 +310,14 @@ export default function ItineraryPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Save with conflicts?</AlertDialogTitle>
             <AlertDialogDescription>
-              Your itinerary has {pendingConflicts.length} conflict{pendingConflicts.length > 1 ? 's' : ''} that haven&apos;t been resolved.
-              Conflicting events are highlighted in red. You can save anyway and address them later, or go back to fix them now.
+              Your itinerary has {pendingConflicts.length} conflict
+              {pendingConflicts.length > 1 ? 's' : ''} that haven&apos;t been resolved. Conflicting
+              events are highlighted in red. You can save anyway and address them later, or go back
+              to fix them now.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelSave}>
-              Go back and fix
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={handleCancelSave}>Go back and fix</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmSaveWithConflictsWithVersion}>
               Save anyway
             </AlertDialogAction>

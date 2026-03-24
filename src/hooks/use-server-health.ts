@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { BACKEND_ENDPOINTS } from '@/lib/env';
 
 export interface ServerHealthState {
   status: 'healthy' | 'unhealthy' | 'checking';
@@ -10,7 +11,6 @@ export interface ServerHealthState {
 
 const HEALTHY_INTERVAL = 30000; // 30 seconds
 const UNHEALTHY_INTERVAL = 3000; // 3 seconds
-const HEALTH_ENDPOINT = 'http://localhost:8000/health';
 
 /**
  * Hook to monitor server health status.
@@ -27,7 +27,7 @@ export function useServerHealth(): ServerHealthState {
 
   const checkHealth = useCallback(async () => {
     try {
-      const response = await fetch(HEALTH_ENDPOINT, {
+      const response = await fetch(BACKEND_ENDPOINTS.health, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

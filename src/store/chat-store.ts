@@ -12,7 +12,7 @@ interface ChatActions {
   addMessage: (message: ChatMessage) => void;
   setTyping: (typing: boolean) => void;
   setOptions: (options: Option[] | null) => void;
-  setConversationId: (id: string) => void;
+  setConversationId: (id: string | null) => void;
   clearChat: () => void;
 }
 

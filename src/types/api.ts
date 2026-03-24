@@ -7,8 +7,16 @@ export interface ChatRequest {
   message: string;
   conversation_id: string;
   context: {
-    trip_data?: TripData;
     current_phase: PlanningPhase;
+    clarification_step?: number;
+    current_day?: number;
+    total_days?: number;
+    trip_data?:
+      | Partial<TripData>
+      | {
+          destination?: string;
+          startDate?: string;
+        };
   };
 }
 

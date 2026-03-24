@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useItineraryStore, EventConflictMap, useDebugLog } from '@/store';
-import { Event, Conflict, Optimization } from '@/types';
+import { Event, Conflict, Itinerary, Optimization } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 
 interface UseItineraryEditResult {
@@ -27,11 +27,15 @@ interface UseItineraryEditResult {
   // Alternatives
   handleOpenAddAlternative: (dayNumber: number, event: Event) => void;
   handleCloseAddAlternative: () => void;
-  handleAddAlternative: (dayNumber: number, primaryEventId: string, alternativeEvent: Event) => void;
+  handleAddAlternative: (
+    dayNumber: number,
+    primaryEventId: string,
+    alternativeEvent: Event
+  ) => void;
   handleVisualSelectionChange: (groupId: string, eventId: string) => void;
 
   // Validation and conflicts
-  handleApplyChanges: () => Promise<void>;
+  handleApplyChanges: () => Promise<Itinerary | null>;
   handleConfirmSaveWithConflicts: () => void;
   handleCancelSave: () => void;
   handleDismissConflict: (eventId: string) => void;
@@ -262,7 +266,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
 
   // Apply changes with validation
   const handleApplyChanges = useCallback(async () => {
-    if (!itinerary) return;
+    if (!itinerary) return null;
 
     debugLog('user_action', 'Apply changes clicked');
 
@@ -274,6 +278,11 @@ export function useItineraryEdit(): UseItineraryEditResult {
       applyVisualSelections();
     }
 
+    const itineraryToValidate = useItineraryStore.getState().itinerary;
+    if (!itineraryToValidate) {
+      return null;
+    }
+
     setIsValidating(true);
     debugLog('api_request', 'Validating itinerary changes');
 
@@ -281,7 +290,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
       const response = await fetch('/api/mock/validate-edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itinerary }),
+        body: JSON.stringify({ itinerary: itineraryToValidate }),
       });
 
       const result = await response.json();
@@ -305,6 +314,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
         setEventConflicts(conflictMap);
         setPendingConflicts(result.conflicts);
         setShowSaveConfirmDialog(true);
+        return null;
       } else {
         clearEventConflicts();
         applyChanges();
@@ -312,6 +322,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
           title: 'Changes saved',
           description: 'Your itinerary has been updated.',
         });
+        return itineraryToValidate;
       }
     } catch (error) {
       console.error('Validation error:', error);
@@ -320,6 +331,7 @@ export function useItineraryEdit(): UseItineraryEditResult {
         title: 'Changes saved',
         description: 'Your itinerary has been updated.',
       });
+      return itineraryToValidate;
     } finally {
       setIsValidating(false);
     }
